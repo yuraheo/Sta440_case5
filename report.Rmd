@@ -1,0 +1,14 @@
+---
+title: "STA 440 Case 4: Root Growth"
+author: "Yura Heo, Anirudh Jain, Richard Jiang"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+format: 
+  pdf:
+    documentclass: article
+    fontsize: 11pt
+geometry: margin=1in
+execute: 
+  warning: false
+  message: false
+  echo: false
+---
