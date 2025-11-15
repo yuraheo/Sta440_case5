@@ -1,0 +1,115 @@
+```{r}
+load("./strokeStudy.RData")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(nlme)
+library(broom)
+library(knitr)
+library(stringr)
+library(tidyverse)
+library(janitor)
+```
+
+# EDA
+```{r}
+x <- x %>% clean_names()%>%
+  rename(emsvscar = em_svs_car)
+str(x)
+```
+missingness per variable
+```{r}
+x %>% 
+  summarise(across(everything(), ~ sum(is.na(.)))) %>% 
+  pivot_longer(everything(),
+               names_to = "variable",
+               values_to = "n_missing") %>%
+  arrange(desc(n_missing))
+```
+missingness aggregated by site
+```{r}
+x %>%
+  group_by(site_id) %>%
+  summarise(across(everything(), ~ mean(is.na(.)))) %>%
+  pivot_longer(-site_id, names_to = "variable", values_to = "prop_missing") %>%
+  ggplot(aes(x = variable, y = site_id, fill = prop_missing)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Missingness by Site")
+```
+```{r}
+x %>%
+  ggplot(aes(x = home_or_rehab, y = age, fill = home_or_rehab)) +
+  geom_boxplot() +
+  labs(title = "Age Differences by Outcome")
+```
+```{r}
+x %>% 
+  ggplot(aes(x = gender, fill = home_or_rehab)) +
+  geom_bar(position = "fill") +
+  labs(y = "Proportion", 
+       title = "Outcome by Gender")
+
+```
+```{r}
+x %>% 
+  ggplot(aes(x = race2, fill = home_or_rehab)) +
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Proportion", 
+       title = "Outcome by Race")
+```
+```{r}
+x <- x %>%
+  mutate(ems_label = case_when(
+    emsvscar == 1 ~ "EMS Arrival",
+    emsvscar == 0 ~ "Car Arrival",
+    TRUE ~ "Missing"
+  ))
+x %>% 
+  ggplot(aes(x = ems_label, fill = home_or_rehab)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Outcome by Arrival Method",
+       x = "Arrival Method",
+       y = "Count",
+       fill = "Good Outcome") +
+  scale_fill_manual(values = c("FALSE" = "tomato", "TRUE" = "steelblue"))
+```
+
+# Frequentist Model
+Prelimirary frequentist logistic regression
+1. Simple logistic regression
+```{r}
+fit1 <- glm( home_or_rehab ~ age + gender + race2 +
+              emsvscar + pre_hosp_notify +
+              had_tpa + had_thrombectomy +
+              tpa_complic + thr_complic +
+              time2,
+            data = x,
+            family = binomial)
+
+summary(fit1)
+tidy(fit1, exponentiate = TRUE, conf.int = TRUE)
+```
+2. Random intercepts by site
+```{r}
+library(lme4)
+fit_mixed <- glmer(home_or_rehab ~ age + gender + race2 +
+                     emsvscar + pre_hosp_notify +
+                     had_thrombectomy + had_tpa +
+                     tpa_complic + thr_complic +
+                     time2 + (1 | site_id),
+                   data = x,
+                   family = binomial)
+
+summary(fit_mixed)
+```
+Site level variation is extremely small; clinical factors dominate
+
+
+
+
+# Bayesian model
