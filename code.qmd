@@ -137,4 +137,10 @@ x %>%
 NOT MCAR because missingness depends on observed variables such as site, time, and EMS-related variables
 
 
+2. MAR in frequentist model
+```{r}
+
+```
+
+
 # Bayesian model
