@@ -128,7 +128,13 @@ summary(fit_mixed)
 ```
 Site level variation is extremely small; clinical factors dominate
 
+```{r}
+library(naniar)
 
+x %>% 
+  gg_miss_fct(fct = home_or_rehab)
+```
+NOT MCAR because missingness depends on observed variables such as site, time, and EMS-related variables
 
 
 # Bayesian model
