@@ -171,9 +171,9 @@ fit1_mi <- with(
 pool(fit1_mi) %>% summary(conf.int = TRUE, exponentiate = TRUE)
 ```
 fits the logistic model within each imputed dataset and pools odds ratios that respect imputation uncertainty.
+# Frequentist model diagnostics
 
-
-# qq plot
+# calibration plot
 ```{r}
 library(arm)
 comp1 <- complete(imp, 1)
@@ -195,27 +195,11 @@ ggplot(cal, aes(mean_pred, obs_rate)) +
        y="Observed Proportion")
 ```
 
-```{r}
-par(mfrow = c(4,5))   # grid of 20 small plots
-
-for (k in 1:20) {
-  compk <- complete(imp, k)
-  
-  fitk <- glm(
-    home_or_rehab ~ age + gender + race2 + emsvscar + pre_hosp_notify +
-      had_tpa + had_thrombectomy + tpa_complic + thr_complic + time2,
-    data = compk,
-    family = binomial
-  )
-  
-  qqnorm(residuals(fitk, type = "deviance"), 
-         main = paste("QQ Deviance Res. - Imp", k), cex = 0.5)
-  qqline(residuals(fitk, type = "deviance"))
-}
-```
 
 
 
-# Frequentist model diagnostics
+
+
+
 
 # Bayesian model
