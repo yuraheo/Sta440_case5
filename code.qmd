@@ -12,6 +12,7 @@ library(stringr)
 library(tidyverse)
 library(janitor)
 library(naniar)
+library(mice)
 ```
 
 # EDA
@@ -20,6 +21,7 @@ x <- x %>% clean_names()%>%
   rename(emsvscar = em_svs_car)
 str(x)
 ```
+
 missingness per variable
 ```{r}
 x %>% 
@@ -29,6 +31,7 @@ x %>%
                values_to = "n_missing") %>%
   arrange(desc(n_missing))
 ```
+
 missingness aggregated by site
 ```{r}
 x %>%
@@ -41,12 +44,14 @@ x %>%
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Missingness by Site")
 ```
+
 ```{r}
 x %>%
   ggplot(aes(x = home_or_rehab, y = age, fill = home_or_rehab)) +
   geom_boxplot() +
   labs(title = "Age Differences by Outcome")
 ```
+
 ```{r}
 x %>% 
   ggplot(aes(x = gender, fill = home_or_rehab)) +
@@ -55,6 +60,7 @@ x %>%
        title = "Outcome by Gender")
 
 ```
+
 ```{r}
 x %>% 
   ggplot(aes(x = race2, fill = home_or_rehab)) +
@@ -63,6 +69,7 @@ x %>%
   labs(y = "Proportion", 
        title = "Outcome by Race")
 ```
+
 ```{r}
 x <- x %>%
   mutate(ems_label = case_when(
@@ -98,49 +105,73 @@ missingness correlation plot
 vis_miss(x)
 ```
 
-# Frequentist Model
-Prelimirary frequentist logistic regression
-1. Simple logistic regression
-```{r}
-fit1 <- glm( home_or_rehab ~ age + gender + race2 +
-              emsvscar + pre_hosp_notify +
-              had_tpa + had_thrombectomy +
-              tpa_complic + thr_complic +
-              time2,
-            data = x,
-            family = binomial)
-
-summary(fit1)
-tidy(fit1, exponentiate = TRUE, conf.int = TRUE)
-```
-2. Random intercepts by site
-```{r}
-library(lme4)
-fit_mixed <- glmer(home_or_rehab ~ age + gender + race2 +
-                     emsvscar + pre_hosp_notify +
-                     had_thrombectomy + had_tpa +
-                     tpa_complic + thr_complic +
-                     time2 + (1 | site_id),
-                   data = x,
-                   family = binomial)
-
-summary(fit_mixed)
-```
-Site level variation is extremely small; clinical factors dominate
+age missingness by site x quarter
 
 ```{r}
-library(naniar)
-
-x %>% 
-  gg_miss_fct(fct = home_or_rehab)
+x %>%
+  mutate(age_missing = is.na(age)) %>%
+  group_by(site_id, time2) %>%
+  summarise(prop_age_missing = mean(age_missing), .groups = "drop") %>%
+  ggplot(aes(x = time2, y = site_id, fill = prop_age_missing)) +
+  geom_tile(color = "white") +
+  scale_fill_viridis_c(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Share of Records Missing Age by Site and Quarter",
+    fill = "Percent\nMissing"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-NOT MCAR because missingness depends on observed variables such as site, time, and EMS-related variables
 
+Can clearly see that this is not MCAR; its MAR.
 
-2. MAR in frequentist model
+# Missing data + Frequentist model
+
+use predictive mean matching by drawing 20 multiply imputed data sets
+
 ```{r}
+impute_vars <- x %>%
+  select(home_or_rehab, age, gender, race2, emsvscar, pre_hosp_notify,
+         had_tpa, had_thrombectomy, tpa_complic, thr_complic,
+         site_id, time2)
 
+meth <- make.method(impute_vars)
+meth["age"] <- "pmm"
+
+pred <- make.predictorMatrix(impute_vars)
+pred["age", ] <- 0
+pred["age", c("gender", "race2", "emsvscar", "pre_hosp_notify",
+              "had_tpa", "had_thrombectomy", "tpa_complic",
+              "thr_complic", "site_id", "time2", "home_or_rehab")] <- 1
+
+set.seed(2025)
+imp <- mice(
+  impute_vars,
+  m = 20,
+  maxit = 20,
+  method = meth,
+  predictorMatrix = pred,
+  seed = 2025,
+  printFlag = FALSE
+)
+
+imp
 ```
+constructs 20 predictive-mean-matching imputations for Age using the specified covariates
 
+```{r}
+fit1_mi <- with(
+  imp,
+  glm(
+    home_or_rehab ~ age + gender + race2 + emsvscar + pre_hosp_notify +
+      had_tpa + had_thrombectomy + tpa_complic + thr_complic + time2,
+    family = binomial
+  )
+)
+
+pool(fit1_mi) %>% summary(conf.int = TRUE, exponentiate = TRUE)
+```
+fits the logistic model within each imputed dataset and pools odds ratios that respect imputation uncertainty.
+
+# Frequentist model diagnostics
 
 # Bayesian model
