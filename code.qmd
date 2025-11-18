@@ -195,7 +195,34 @@ ggplot(cal, aes(mean_pred, obs_rate)) +
        y="Observed Proportion")
 ```
 
+# which variables were predictive of missingness
+```{r}
+x$miss_age <- ifelse(is.na(x$age), 1, 0)
+find_predictors_of_missingness <- function(var) {
+  
+  # 1. Create missingness indicator
+  miss_indicator <- as.numeric(is.na(x[[var]]))
+  
+  # 2. Build dataset with predictors (drop the variable being tested)
+  predictors <- x[, setdiff(names(x), var), drop = FALSE]
+  
+  # 3. Combine into one dataframe
+  data_miss <- data.frame(miss = miss_indicator, predictors)
+  
+  # 4. Fit logistic regression
+  fit <- glm(miss ~ ., data = data_miss, family = binomial)
+  
+  return(summary(fit))
+}
 
+find_predictors_of_missingness("age")
+
+
+```
+indicates perfect separation (complete separation)
+missingness mechanism is
+
+Not random. but structural, driven by site and quarter
 
 
 
