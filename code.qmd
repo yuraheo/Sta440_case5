@@ -19,6 +19,11 @@ library(mice)
 ```{r}
 x <- x %>% clean_names()%>%
   rename(emsvscar = em_svs_car)
+
+x$race2[x$race2 == "Missing"] <- NA
+x$race2 <- factor(x$race2) 
+x$site_id <- factor(x$site_id)
+
 str(x)
 ```
 
@@ -130,11 +135,15 @@ Can clearly see that this is not MCAR; its MAR.
 
 use predictive mean matching by drawing 20 multiply imputed data sets
 
+
+
 ```{r}
 impute_vars <- x %>%
-  select(home_or_rehab, age, gender, race2, emsvscar, pre_hosp_notify,
-         had_tpa, had_thrombectomy, tpa_complic, thr_complic,
-         site_id, time2)
+   dplyr::select(
+    home_or_rehab, age, gender, race2, emsvscar, pre_hosp_notify,
+    had_tpa, had_thrombectomy, tpa_complic, thr_complic,
+    site_id, time2
+  )
 
 meth <- make.method(impute_vars)
 meth["age"] <- "pmm"
@@ -179,15 +188,41 @@ fits the logistic model within each imputed dataset and pools odds ratios that r
 ```{r}
 comp1 <- complete(imp, 1)  # first imputed dataset
 
-fit1 <- glm(
+fit_fixed <- glm(
   home_or_rehab ~ age + gender + race2 + emsvscar + pre_hosp_notify +
     had_tpa + had_thrombectomy + tpa_complic + thr_complic + time2,
   data = comp1,
   family = binomial
 )
-comp1$pred <- predict(fit1, type="response")
+comp1$pred <- predict(fit_fixed, type="response")
 
 ```
+
+```{r}
+library(lme4)
+
+fit_mixed <- glmer(
+  home_or_rehab ~ age + gender + race2 + emsvscar + pre_hosp_notify +
+    had_tpa + had_thrombectomy + tpa_complic + thr_complic + time2 +
+    (1 | site_id),
+  data   = comp1,
+  family = binomial
+)
+```
+random effect for site id is extremely small (variance close to 0)
+```{r}
+pearson_res <- residuals(fit_fixed, type = "pearson")
+
+# Overdispersion ratio
+overdisp_fixed <- sum(pearson_res^2) / df.residual(fit_fixed)
+overdisp_fixed
+pearson_res_mixed <- residuals(fit_mixed, type = "pearson")
+overdisp_mixed <- sum(pearson_res_mixed^2) / df.residual(fit_mixed)
+overdisp_mixed
+```
+≈ 1 → no overdispersion in both fixed & mixed model
+-> adding site effect doesnt reduce dispersion
+
 
 2. all imputed datasets
 ```{r}
@@ -218,6 +253,7 @@ cal_list <- lapply(1:imp$m, function(k) {
 
 cal_all <- bind_rows(cal_list)
 ```
+
 
 # calibration plot
 ```{r}
@@ -364,3 +400,16 @@ Not random. but structural, driven by site and quarter
 
 
 # Bayesian model
+```{r}
+for (i in 1:N) {
+  race[i] ~ dcat(pi_race[site_id[i], 1:3])
+}
+
+for (j in 1:9) {
+  pi_race[j, 1:3] ~ ddirch(alpha[])
+}
+alpha <- c(1/2, 1/2, 1/2) # jeffreys non-informative prior
+
+
+```
+
