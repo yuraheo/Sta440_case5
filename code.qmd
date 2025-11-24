@@ -405,48 +405,47 @@ Not random. but structural, driven by site and quarter
 model_string <- "
 model {
 
-  ###############
-  # 1. OUTCOME MODEL: home_or_rehab
-  ###############
+  ################################################
+  # 0. OUTCOME MODEL: home_or_rehab
+  ################################################
 
   for (i in 1:N) {
-
     # Binary outcome
     home[i] ~ dbern(p[i])
 
-    # Logistic mixed model with site random intercept
+    # Logistic mixed model
     logit(p[i]) <-
         beta0 +
         beta_age   * age[i] +
-        beta_gender * gender[i] +      # assume gender coded 0/1
-        beta_ems   * transport[i] +    # EMS vs car
+        beta_gender * gender[i] +          # assume 0/1
+        beta_ems   * transport[i] +        # EMS vs car
         beta_not   * notify[i] +
         beta_tpa   * had_tpa[i] +
         beta_thr   * had_thromb[i] +
         beta_tpaC  * tpa_comp[i] +
         beta_thrC  * thr_comp[i] +
         beta_time[ time[i] ] +
-        beta_race[race[i]] +           # race coded 1:3
-        u_site_out[ site[i] ]
+        beta_race[race[i]] +               # race coded 1..nRace
+        u_site_out[ site[i] ]              # site random effect
   }
 
   # Priors for outcome fixed effects
-  beta0      ~ dnorm(0, 1.0E-4)
-  beta_age   ~ dnorm(0, 1.0E-4)
-  beta_gender~ dnorm(0, 1.0E-4)
-  beta_ems   ~ dnorm(0, 1.0E-4)
-  beta_not   ~ dnorm(0, 1.0E-4)
-  beta_tpa   ~ dnorm(0, 1.0E-4)
-  beta_thr   ~ dnorm(0, 1.0E-4)
-  beta_tpaC  ~ dnorm(0, 1.0E-4)
-  beta_thrC  ~ dnorm(0, 1.0E-4)
+  beta0       ~ dnorm(0, 1.0E-4)
+  beta_age    ~ dnorm(0, 1.0E-4)
+  beta_gender ~ dnorm(0, 1.0E-4)
+  beta_ems    ~ dnorm(0, 1.0E-4)
+  beta_not    ~ dnorm(0, 1.0E-4)
+  beta_tpa    ~ dnorm(0, 1.0E-4)
+  beta_thr    ~ dnorm(0, 1.0E-4)
+  beta_tpaC   ~ dnorm(0, 1.0E-4)
+  beta_thrC   ~ dnorm(0, 1.0E-4)
 
-  # Time effects (quarter) – weakly informative priors
+  # Time (quarter) effects
   for (t in 1:nTime) {
     beta_time[t] ~ dnorm(0, 1.0E-4)
   }
 
-  # Race effects with last category as reference
+  # Race effects, last category as reference
   for (r in 1:(nRace-1)) {
     beta_race[r] ~ dnorm(0, 1.0E-4)
   }
@@ -457,86 +456,46 @@ model {
     u_site_out[s] ~ dnorm(0, tau_site_out)
   }
   tau_site_out <- pow(sigma_site_out, -2)
-  sigma_site_out ~ dunif(0, 2)   # small-ish SD prior
+  sigma_site_out ~ dunif(0, 2)
 
 
-  ###############
-  # 2. COVARIATE MODEL: AGE
-  #    P(age | site, time)  (top of the ordering)
-  ###############
+  ################################################
+  # 1. RACE MODEL: race | site
+  #    (first in ordering)
+  ################################################
 
   for (i in 1:N) {
-    age[i] ~ dnorm(mu_age[i], tau_age)
-
-    mu_age[i] <-
-        alpha0 +
-        alpha_time[ time[i] ] +
-        u_site_age[ site[i] ]
-  }
-
-  alpha0 ~ dnorm(0, 1.0E-4)
-
-  for (t in 1:nTime) {
-    alpha_time[t] ~ dnorm(0, 1.0E-4)
+    race[i] ~ dcat(pi_race[ site[i], 1:nRace ])
   }
 
   for (s in 1:nSite) {
-    u_site_age[s] ~ dnorm(0, tau_site_age)
-  }
-  tau_age      <- pow(sigma_age, -2)
-  sigma_age    ~ dunif(0, 50)     # age in years
-  tau_site_age <- pow(sigma_site_age, -2)
-  sigma_site_age ~ dunif(0, 20)
-
-
-  ###############
-  # 3. COVARIATE MODEL: NOTIFY
-  #    P(notify | age, site, time)
-  ###############
-
-  for (i in 1:N) {
-    notify[i] ~ dbern(pi_not[i])
-
-    logit(pi_not[i]) <-
-        delta0 +
-        delta_age  * age[i] +
-        delta_time[ time[i] ] +
-        u_site_not[ site[i] ]
+    # alpha[] passed in as data, e.g. c(0.5,0.5,0.5)
+    pi_race[s, 1:nRace] ~ ddirch(alpha[])
   }
 
-  delta0   ~ dnorm(0, 1.0E-4)
-  delta_age~ dnorm(0, 1.0E-4)
 
-  for (t in 1:nTime) {
-    delta_time[t] ~ dnorm(0, 1.0E-4)
-  }
-
-  for (s in 1:nSite) {
-    u_site_not[s] ~ dnorm(0, tau_site_not)
-  }
-  tau_site_not <- pow(sigma_site_not, -2)
-  sigma_site_not ~ dunif(0, 2)
-
-
-  ###############
-  # 4. COVARIATE MODEL: TRANSPORT (EMS vs car)
-  #    P(transport | age, notify, site, time)
-  ###############
+  ################################################
+  # 2. TRANSPORT MODEL: transport | race, site, time
+  #    (second in ordering)
+  ################################################
 
   for (i in 1:N) {
     transport[i] ~ dbern(pi_tr[i])
 
     logit(pi_tr[i]) <-
         gamma0 +
-        gamma_age * age[i] +
-        gamma_not * notify[i] +
+        gamma_race[race[i]] +
         gamma_time[ time[i] ] +
         u_site_tr[ site[i] ]
   }
 
-  gamma0   ~ dnorm(0, 1.0E-4)
-  gamma_age~ dnorm(0, 1.0E-4)
-  gamma_not~ dnorm(0, 1.0E-4)
+  gamma0 ~ dnorm(0, 1.0E-4)
+
+  # Race effects on transport, last race as reference
+  for (r in 1:(nRace-1)) {
+    gamma_race[r] ~ dnorm(0, 1.0E-4)
+  }
+  gamma_race[nRace] <- 0
 
   for (t in 1:nTime) {
     gamma_time[t] ~ dnorm(0, 1.0E-4)
@@ -549,67 +508,127 @@ model {
   sigma_site_tr ~ dunif(0, 2)
 
 
-  ###############
-  # 5. COVARIATE MODEL: RACE
-  #    P(race | site)  – Dirichlet–categorical
-  ###############
+  ################################################
+  # 3. NOTIFY MODEL: notify | transport, race, site, time
+  #    (third in ordering)
+  ################################################
 
   for (i in 1:N) {
-    race[i] ~ dcat(pi_race[ site[i], 1:nRace ])
+    notify[i] ~ dbern(pi_not[i])
+
+    logit(pi_not[i]) <-
+        delta0 +
+        delta_tr   * transport[i] +
+        delta_race[race[i]] +
+        delta_time[ time[i] ] +
+        u_site_not[ site[i] ]
+  }
+
+  delta0   ~ dnorm(0, 1.0E-4)
+  delta_tr ~ dnorm(0, 1.0E-4)
+
+  # Race effects on notify, last race as reference
+  for (r in 1:(nRace-1)) {
+    delta_race[r] ~ dnorm(0, 1.0E-4)
+  }
+  delta_race[nRace] <- 0
+
+  for (t in 1:nTime) {
+    delta_time[t] ~ dnorm(0, 1.0E-4)
   }
 
   for (s in 1:nSite) {
-    pi_race[s, 1:nRace] ~ ddirch(alpha[])   # alpha = c(0.5,0.5,0.5) passed in as data
+    u_site_not[s] ~ dnorm(0, tau_site_not)
   }
+  tau_site_not <- pow(sigma_site_not, -2)
+  sigma_site_not ~ dunif(0, 2)
+
+
+  ################################################
+  # 4. AGE MODEL: age | notify, transport, race, site, time
+  #    (last in ordering)
+  ################################################
+
+  for (i in 1:N) {
+    age[i] ~ dnorm(mu_age[i], tau_age)
+
+    mu_age[i] <-
+        alpha0 +
+        alpha_tr   * transport[i] +
+        alpha_not  * notify[i] +
+        alpha_race[race[i]] +
+        alpha_time[ time[i] ] +
+        u_site_age[ site[i] ]
+  }
+
+  alpha0    ~ dnorm(0, 1.0E-4)
+  alpha_tr  ~ dnorm(0, 1.0E-4)
+  alpha_not ~ dnorm(0, 1.0E-4)
+
+  # Race effects on age, last race as reference
+  for (r in 1:(nRace-1)) {
+    alpha_race[r] ~ dnorm(0, 1.0E-4)
+  }
+  alpha_race[nRace] <- 0
+
+  for (t in 1:nTime) {
+    alpha_time[t] ~ dnorm(0, 1.0E-4)
+  }
+
+  for (s in 1:nSite) {
+    u_site_age[s] ~ dnorm(0, tau_site_age)
+  }
+
+  tau_age       <- pow(sigma_age, -2)
+  sigma_age     ~ dunif(0, 50)      # age in years
+  tau_site_age  <- pow(sigma_site_age, -2)
+  sigma_site_age ~ dunif(0, 20)
 
 }
 "
 ```
 
 ```{r}
-library(rjags)
-
 data_list <- list(
   N      = nrow(x),
   nSite  = nlevels(x$site_id),
   nTime  = nlevels(x$time2),
   nRace  = nlevels(x$race2),
 
-  home   = as.numeric(x$home_or_rehab),      # 0/1 (if logical, as.numeric gives 0/1)
-  age    = x$age,                            # numeric, with NA
-  notify = as.numeric(x$pre_hosp_notify),    # 0/1 with NA
-  transport = as.numeric(x$emsvscar),        # 0/1 with NA
+  home      = as.numeric(x$home_or_rehab),         # 0/1 (if logical, as.numeric)
+  age       = x$age,                               # numeric, NA allowed
+  notify    = as.numeric(x$pre_hosp_notify),       # 0/1, NA allowed
+  transport = as.numeric(x$emsvscar),              # 0/1, NA allowed
   had_tpa   = as.numeric(x$had_tpa),
   had_thromb= as.numeric(x$had_thrombectomy),
   tpa_comp  = as.numeric(x$tpa_complic),
   thr_comp  = as.numeric(x$thr_complic),
 
-  # gender coded 0/1 (you may need to recode from factor)
-  gender = as.numeric(x$gender) - 1,
+  gender = as.numeric(x$gender) - 1,               # 0/1
+  race   = as.numeric(x$race2),                    # 1..nRace, NA allowed
 
-  # race coded 1..nRace, NA where missing
-  race   = as.numeric(x$race2),
+  site   = as.numeric(x$site_id),                  # 1..nSite
+  time   = as.numeric(x$time2),                    # 1..nTime
 
-  # site and time as 1..levels
-  site   = as.numeric(x$site_id),
-  time   = as.numeric(x$time2),
-
-  # Dirichlet prior parameter for race
-  alpha  = rep(0.5, nlevels(x$race2))
+  alpha  = rep(0.5, nlevels(x$race2))              # Jeffreys prior for race
 )
+```
 
-# Build and run JAGS model
-jags_mod <- jags.model(textConnection(model_string),
-                       data = data_list,
-                       n.chains = 3)
+```{r}
+library(rjags)
 
-update(jags_mod, 2000)  # burn-in
+jmod <- jags.model(textConnection(model_string),
+                   data = data_list,
+                   n.chains = 3)
 
-samp <- coda.samples(jags_mod,
-                     variable.names = c(\"beta0\", \"beta_age\", \"beta_time\",
-                                        \"sigma_site_out\"),
-                     n.iter = 5000)
+update(jmod, 2000)
 
-summary(samp)
+samps <- coda.samples(jmod,
+                      variable.names = c("beta0","beta_age","beta_time",
+                                         "sigma_site_out"),
+                      n.iter = 5000)
+
+summary(samps)
 
 ```
+
