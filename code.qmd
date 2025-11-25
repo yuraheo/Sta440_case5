@@ -17,12 +17,26 @@ library(mice)
 
 # EDA
 ```{r}
-x <- x %>% clean_names()%>%
-  rename(emsvscar = em_svs_car)
-
-x$race2[x$race2 == "Missing"] <- NA
-x$race2 <- factor(x$race2) 
-x$site_id <- factor(x$site_id)
+x <- x %>%
+  clean_names() %>%
+  rename(emsvscar = em_svs_car) %>%
+  mutate(
+    race2 = na_if(race2, "Missing"),
+    race2 = factor(race2),
+    site_id = factor(site_id),
+    home_num = as.integer(home_or_rehab),
+    notify_num = case_when(
+      pre_hosp_notify == "Yes" ~ 1,
+      pre_hosp_notify == "No" ~ 0,
+      TRUE ~ NA_real_
+    ),
+    transport_num = case_when(
+      emsvscar == 1 ~ 1,
+      emsvscar == 0 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    gender_num = if_else(gender == "Female", 1, 0)
+  )
 
 str(x)
 ```
@@ -595,20 +609,20 @@ data_list <- list(
   nTime  = nlevels(x$time2),
   nRace  = nlevels(x$race2),
 
-  home      = as.numeric(x$home_or_rehab),         # 0/1 (if logical, as.numeric)
+  home      = x$home_num,                          # 0/1
   age       = x$age,                               # numeric, NA allowed
-  notify    = as.numeric(x$pre_hosp_notify),       # 0/1, NA allowed
-  transport = as.numeric(x$emsvscar),              # 0/1, NA allowed
-  had_tpa   = as.numeric(x$had_tpa),
-  had_thromb= as.numeric(x$had_thrombectomy),
-  tpa_comp  = as.numeric(x$tpa_complic),
-  thr_comp  = as.numeric(x$thr_complic),
+  notify    = x$notify_num,                        # 0/1, NA allowed
+  transport = x$transport_num,                     # 0/1, NA allowed
+  had_tpa   = as.integer(x$had_tpa),
+  had_thromb= as.integer(x$had_thrombectomy),
+  tpa_comp  = as.integer(x$tpa_complic),
+  thr_comp  = as.integer(x$thr_complic),
 
-  gender = as.numeric(x$gender) - 1,               # 0/1
-  race   = as.numeric(x$race2),                    # 1..nRace, NA allowed
+  gender = x$gender_num,                           # 0/1
+  race   = as.integer(x$race2),                    # 1..nRace, NA allowed
 
-  site   = as.numeric(x$site_id),                  # 1..nSite
-  time   = as.numeric(x$time2),                    # 1..nTime
+  site   = as.integer(x$site_id),                  # 1..nSite
+  time   = as.integer(x$time2),                    # 1..nTime
 
   alpha  = rep(0.5, nlevels(x$race2))              # Jeffreys prior for race
 )
@@ -631,4 +645,3 @@ samps <- coda.samples(jmod,
 summary(samps)
 
 ```
-
