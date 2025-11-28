@@ -620,3 +620,12 @@ samps <- coda.samples(jmod,
 summary(samps)
 
 ```
+# Trace plots
+
+# Gelman-Rubin Diagnostic
+
+# Effective Size Results
+
+# Posterior Results
+
+# Residual Plots
