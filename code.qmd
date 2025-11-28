@@ -474,57 +474,37 @@ model {
 
 
   ################################################
-  # 1. RACE MODEL: race | site
-  #    (first in ordering)
+  # 1. AGE MODEL: age | site, time (FIRST in ordering)
   ################################################
 
   for (i in 1:N) {
-    race[i] ~ dcat(pi_race[ site[i], 1:nRace ])
+    age[i] ~ dnorm(mu_age[i], tau_age)
+    mu_age[i] <-
+        alpha0 +
+        alpha_time[ time[i] ] +
+        alpha_gender * gender[i] +    # optional, you can drop if you want simpler
+        u_site_age[ site[i] ]
   }
 
-  for (s in 1:nSite) {
-    # alpha[] passed in as data, e.g. c(0.5,0.5,0.5)
-    pi_race[s, 1:nRace] ~ ddirch(alpha[])
-  }
-
-
-  ################################################
-  # 2. TRANSPORT MODEL: transport | race, site, time
-  #    (second in ordering)
-  ################################################
-
-  for (i in 1:N) {
-    transport[i] ~ dbern(pi_tr[i])
-
-    logit(pi_tr[i]) <-
-        gamma0 +
-        gamma_race[race[i]] +
-        gamma_time[ time[i] ] +
-        u_site_tr[ site[i] ]
-  }
-
-  gamma0 ~ dnorm(0, 1.0E-4)
-
-  # Race effects on transport, last race as reference
-  for (r in 1:(nRace-1)) {
-    gamma_race[r] ~ dnorm(0, 1.0E-4)
-  }
-  gamma_race[nRace] <- 0
+  alpha0       ~ dnorm(0, 1.0E-4)
+  alpha_gender ~ dnorm(0, 1.0E-4)
 
   for (t in 1:nTime) {
-    gamma_time[t] ~ dnorm(0, 1.0E-4)
+    alpha_time[t] ~ dnorm(0, 1.0E-4)
   }
 
   for (s in 1:nSite) {
-    u_site_tr[s] ~ dnorm(0, tau_site_tr)
+    u_site_age[s] ~ dnorm(0, tau_site_age)
   }
-  tau_site_tr <- pow(sigma_site_tr, -2)
-  sigma_site_tr ~ dunif(0, 2)
+
+  tau_age        <- pow(sigma_age, -2)
+  sigma_age      ~ dunif(0, 50)      # age in years
+  tau_site_age   <- pow(sigma_site_age, -2)
+  sigma_site_age ~ dunif(0, 20)
 
 
   ################################################
-  # 3. NOTIFY MODEL: notify | transport, race, site, time
-  #    (third in ordering)
+  # 2. NOTIFY MODEL: notify | age, site, time (SECOND)
   ################################################
 
   for (i in 1:N) {
@@ -532,20 +512,13 @@ model {
 
     logit(pi_not[i]) <-
         delta0 +
-        delta_tr   * transport[i] +
-        delta_race[race[i]] +
+        delta_age   * age[i] +
         delta_time[ time[i] ] +
         u_site_not[ site[i] ]
   }
 
-  delta0   ~ dnorm(0, 1.0E-4)
-  delta_tr ~ dnorm(0, 1.0E-4)
-
-  # Race effects on notify, last race as reference
-  for (r in 1:(nRace-1)) {
-    delta_race[r] ~ dnorm(0, 1.0E-4)
-  }
-  delta_race[nRace] <- 0
+  delta0    ~ dnorm(0, 1.0E-4)
+  delta_age ~ dnorm(0, 1.0E-4)
 
   for (t in 1:nTime) {
     delta_time[t] ~ dnorm(0, 1.0E-4)
@@ -559,44 +532,46 @@ model {
 
 
   ################################################
-  # 4. AGE MODEL: age | notify, transport, race, site, time
-  #    (last in ordering)
+  # 3. TRANSPORT MODEL: transport | age, notify, site, time (THIRD)
   ################################################
 
   for (i in 1:N) {
-    age[i] ~ dnorm(mu_age[i], tau_age)
+    transport[i] ~ dbern(pi_tr[i])
 
-    mu_age[i] <-
-        alpha0 +
-        alpha_tr   * transport[i] +
-        alpha_not  * notify[i] +
-        alpha_race[race[i]] +
-        alpha_time[ time[i] ] +
-        u_site_age[ site[i] ]
+    logit(pi_tr[i]) <-
+        gamma0 +
+        gamma_age   * age[i] +
+        gamma_not   * notify[i] +
+        gamma_time[ time[i] ] +
+        u_site_tr[ site[i] ]
   }
 
-  alpha0    ~ dnorm(0, 1.0E-4)
-  alpha_tr  ~ dnorm(0, 1.0E-4)
-  alpha_not ~ dnorm(0, 1.0E-4)
-
-  # Race effects on age, last race as reference
-  for (r in 1:(nRace-1)) {
-    alpha_race[r] ~ dnorm(0, 1.0E-4)
-  }
-  alpha_race[nRace] <- 0
+  gamma0    ~ dnorm(0, 1.0E-4)
+  gamma_age ~ dnorm(0, 1.0E-4)
+  gamma_not ~ dnorm(0, 1.0E-4)
 
   for (t in 1:nTime) {
-    alpha_time[t] ~ dnorm(0, 1.0E-4)
+    gamma_time[t] ~ dnorm(0, 1.0E-4)
   }
 
   for (s in 1:nSite) {
-    u_site_age[s] ~ dnorm(0, tau_site_age)
+    u_site_tr[s] ~ dnorm(0, tau_site_tr)
+  }
+  tau_site_tr <- pow(sigma_site_tr, -2)
+  sigma_site_tr ~ dunif(0, 2)
+
+
+  ################################################
+  # 4. RACE MODEL: race | site (LAST in ordering)
+  ################################################
+
+  for (i in 1:N) {
+    race[i] ~ dcat(pi_race[ site[i], 1:nRace ])
   }
 
-  tau_age       <- pow(sigma_age, -2)
-  sigma_age     ~ dunif(0, 50)      # age in years
-  tau_site_age  <- pow(sigma_site_age, -2)
-  sigma_site_age ~ dunif(0, 20)
+  for (s in 1:nSite) {
+    pi_race[s, 1:nRace] ~ ddirch(alpha[])
+  }
 
 }
 "
