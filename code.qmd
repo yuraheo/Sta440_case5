@@ -612,15 +612,31 @@ jmod <- jags.model(textConnection(model_string),
 
 update(jmod, 2000)
 
-samps <- coda.samples(jmod,
-                      variable.names = c("beta0","beta_age","beta_time",
-                                         "sigma_site_out"),
-                      n.iter = 5000)
+params_of_interest <- c(
+  "beta0", "beta_age", "beta_gender", "beta_ems", "beta_not",
+  "beta_tpa", "beta_thr", "beta_tpaC", "beta_thrC",
+  "beta_time", "beta_race",
+  "sigma_site_out", "sigma_age", "sigma_site_age",
+  "sigma_site_not", "sigma_site_tr"
+)
 
-summary(samps)
+posterior_samples <- coda.samples(
+  jmod,
+  variable.names = params_of_interest,
+  n.iter = 8000
+)
+
+summary(posterior_samples)
 
 ```
 # Trace plots
+```{r}
+old_par <- par(no.readonly = TRUE)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 1))
+plot(posterior_samples[, c("beta0", "beta_age", "beta_tpa", "beta_thr")])
+par(old_par)
+```
+Need to look into the mixing for beta0 and beta_age. 
 
 # Gelman-Rubin Diagnostic
 
