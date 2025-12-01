@@ -606,28 +606,53 @@ data_list <- list(
 ```{r}
 library(rjags)
 
-jmod <- jags.model(textConnection(model_string),
-                   data = data_list,
-                   n.chains = 3)
+results_dir <- "results"
+samples_path <- file.path(results_dir, "posterior_samples_jags.rds")
+summary_path <- file.path(results_dir, "posterior_summary.rds")
+stats_path   <- file.path(results_dir, "posterior_statistics.csv")
 
-update(jmod, 2000)
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, recursive = TRUE)
+}
 
-params_of_interest <- c(
-  "beta0", "beta_age", "beta_gender", "beta_ems", "beta_not",
-  "beta_tpa", "beta_thr", "beta_tpaC", "beta_thrC",
-  "beta_time", "beta_race",
-  "sigma_site_out", "sigma_age", "sigma_site_age",
-  "sigma_site_not", "sigma_site_tr"
-)
+if (file.exists(samples_path) && file.exists(summary_path)) {
+  posterior_samples <- readRDS(samples_path)
+  posterior_summary <- readRDS(summary_path)
+} else {
+  jmod <- jags.model(
+    textConnection(model_string),
+    data = data_list,
+    n.chains = 3
+  )
 
-posterior_samples <- coda.samples(
-  jmod,
-  variable.names = params_of_interest,
-  n.iter = 8000
-)
+  update(jmod, 2000)
 
-summary(posterior_samples)
+  params_of_interest <- c(
+    "beta0", "beta_age", "beta_gender", "beta_ems", "beta_not",
+    "beta_tpa", "beta_thr", "beta_tpaC", "beta_thrC",
+    "beta_time", "beta_race",
+    "sigma_site_out", "sigma_age", "sigma_site_age",
+    "sigma_site_not", "sigma_site_tr"
+  )
 
+  posterior_samples <- coda.samples(
+    jmod,
+    variable.names = params_of_interest,
+    n.iter = 8000
+  )
+
+  posterior_summary <- summary(posterior_samples)
+
+  saveRDS(posterior_samples, samples_path)
+  saveRDS(posterior_summary, summary_path)
+  write.csv(
+    posterior_summary$statistics,
+    stats_path,
+    row.names = TRUE
+  )
+}
+
+posterior_summary
 ```
 # Trace plots
 ```{r}
