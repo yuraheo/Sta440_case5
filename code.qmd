@@ -664,8 +664,17 @@ par(old_par)
 Need to look into the mixing for beta0 and beta_age. 
 
 # Gelman-Rubin Diagnostic
+```{r}
+gelman_diag <- gelman.diag(posterior_samples, multivariate = FALSE)
+gelman_diag
+```
+Most potential scale-reduction factors are near 1, so indicates that the three chains mixed well.
 
 # Effective Size Results
+```{r}
+ess_values <- effectiveSize(posterior_samples)
+ess_values
+```
 
 # Posterior Results
 
