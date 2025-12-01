@@ -17,6 +17,8 @@ library(mice)
 
 # EDA
 ```{r}
+time_stage_levels <- c("baseline", "mid", "final")
+
 x <- x %>%
   clean_names() %>%
   rename(emsvscar = em_svs_car) %>%
@@ -35,7 +37,14 @@ x <- x %>%
       emsvscar == 0 ~ 0,
       TRUE ~ NA_real_
     ),
-    gender_num = if_else(gender == "Female", 1, 0)
+    gender_num = if_else(gender == "Female", 1, 0),
+    time_stage = case_when(
+      time2 %in% c("Y1Q1", "Y1Q2") ~ "baseline",
+      time2 %in% c("Y1Q3", "Y1Q4", "Y2Q1", "Y2Q2") ~ "mid",
+      time2 %in% c("Y2Q3", "Y2Q4") ~ "final",
+      TRUE ~ NA_character_
+    ),
+    time_stage = factor(time_stage, levels = time_stage_levels)
   )
 
 str(x)
@@ -456,7 +465,7 @@ model {
         beta_thr   * had_thromb[i] +
         beta_tpaC  * tpa_comp[i] +
         beta_thrC  * thr_comp[i] +
-        beta_time[ time[i] ] +
+        beta_time[ time_stage[i] ] +
         beta_race[race[i]] +               # race coded 1..nRace
         u_site_out[ site[i] ]              # site random effect
   }
@@ -473,7 +482,7 @@ model {
   beta_thrC   ~ dnorm(0, 1.0E-4)
 
   # Time (quarter) effects
-  for (t in 1:nTime) {
+  for (t in 1:nTimeStage) {
     beta_time[t] ~ dnorm(0, 1.0E-4)
   }
 
@@ -500,7 +509,7 @@ model {
     age[i] ~ dnorm(mu_age[i], tau_age)
     mu_age[i] <-
         alpha0 +
-        alpha_time[ time[i] ] +
+        alpha_time[ time_stage[i] ] +
         alpha_gender * gender[i] +
         alpha_tr     * transport[i] +   # allow EMS to shift age mix
         alpha_not    * notify[i] +      # allow notification to shift age mix
@@ -512,7 +521,7 @@ model {
   alpha_tr     ~ dnorm(0, 1.0E-4)      
   alpha_not    ~ dnorm(0, 1.0E-4)     
 
-  for (t in 1:nTime) {
+  for (t in 1:nTimeStage) {
     alpha_time[t] ~ dnorm(0, 1.0E-4)
   }
 
@@ -536,18 +545,18 @@ model {
     # If transport[i] = 0, then pi_not[i] ≈ 0, so notify[i] ≈ 0.
     notify[i] ~ dbern(pi_not[i])
 
-    pi_not[i] <- pi_ems[i] * transport[i]
+    pi_not[i] <- transport[i] * pi_ems[i] + (1 - transport[i]) * 1.0E-6
 
     logit(pi_ems[i]) <-
         delta0 +
-        delta_time[ time[i] ] +
+        delta_time[ time_stage[i] ] +
         delta_gender * gender[i] +
         u_site_not[ site[i] ]
   }
 
   delta0        ~ dnorm(0, 1.0E-4)
   delta_gender  ~ dnorm(0, 1.0E-4)    
-  for (t in 1:nTime) {
+  for (t in 1:nTimeStage) {
     delta_time[t] ~ dnorm(0, 1.0E-4)
   }
 
@@ -568,14 +577,14 @@ model {
 
     logit(pi_tr[i]) <-
         gamma0 +
-        gamma_time[ time[i] ] +
+        gamma_time[ time_stage[i] ] +
         gamma_gender * gender[i] +
         u_site_tr[ site[i] ]
   }
 
   gamma0        ~ dnorm(0, 1.0E-4)
   gamma_gender  ~ dnorm(0, 1.0E-4)     
-  for (t in 1:nTime) {
+  for (t in 1:nTimeStage) {
     gamma_time[t] ~ dnorm(0, 1.0E-4)
   }
 
@@ -599,22 +608,10 @@ model {
   }
   
   ################################################
-  # 5. DERIVED QUANTITIES: baseline (Y1Q1,Y1Q2)
-  #    vs final (Y2Q3,Y2Q4)
+  # 5. DERIVED QUANTITIES: baseline vs final stages
   ################################################
-  # Collect beta_time for baseline quarters
-  for (j in 1:nBase) {
-    beta_time_base_j[j] <- beta_time[ base_times[j] ]
-  }
-
-  # Collect beta_time for final quarters
-  for (j in 1:nFinal) {
-    beta_time_final_j[j] <- beta_time[ final_times[j] ]
-  }
-
-  # Average effects over baseline and final periods
-  beta_time_baseline <- mean(beta_time_base_j[1:nBase])
-  beta_time_final    <- mean(beta_time_final_j[1:nFinal])
+  beta_time_baseline <- beta_time[ baseline_stage ]
+  beta_time_final    <- beta_time[ final_stage ]
 
   # Overall program effect on log-odds and OR
   time_effect <- beta_time_final - beta_time_baseline
@@ -664,15 +661,13 @@ model {
 ```
 
 ```{r}
-time_levels <- levels(x$time2)
-
-baseline_times <- which(time_levels %in% c("Y1Q1", "Y1Q2"))
-final_times    <- which(time_levels %in% c("Y2Q3", "Y2Q4"))
+baseline_stage <- which(levels(x$time_stage) == "baseline")
+final_stage    <- which(levels(x$time_stage) == "final")
 
 data_list <- list(
   N      = nrow(x),
   nSite  = nlevels(x$site_id),
-  nTime  = nlevels(x$time2),
+  nTimeStage = nlevels(x$time_stage),
   nRace  = nlevels(x$race2),
 
   home      = x$home_num,                          # 0/1
@@ -688,13 +683,11 @@ data_list <- list(
   race   = as.integer(x$race2),                    # 1..nRace, NA allowed
 
   site   = as.integer(x$site_id),                  # 1..nSite
-  time   = as.integer(x$time2),                    # 1..nTime
+  time_stage = as.integer(x$time_stage),           # 1..nTimeStage
 
   alpha  = rep(0.5, nlevels(x$race2)),              # Jeffreys prior for race
-  nBase  = length(baseline_times),
-  nFinal = length(final_times),
-  base_times  = baseline_times,
-  final_times = final_times
+  baseline_stage = baseline_stage,
+  final_stage    = final_stage
 )
 ```
 
@@ -772,5 +765,45 @@ ess_values
 ```
 
 # Posterior Results
+```{r}
+posterior_stats <- posterior_summary$statistics %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("parameter")
+
+posterior_quants <- posterior_summary$quantiles %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("parameter")
+
+posterior_table <- posterior_stats %>%
+  dplyr::select(parameter, Mean, SD) %>%
+  left_join(
+    posterior_quants %>%
+      dplyr::select(parameter, `2.5%`, `50%`, `97.5%`),
+    by = "parameter"
+  ) %>%
+  filter(
+    stringr::str_detect(
+      parameter,
+      "^(beta_(age|tpa|thr|ems|not|time|race)|sigma_site_out)"
+    )
+  )
+
+posterior_table %>%
+  arrange(parameter) %>%
+  knitr::kable(digits = 3, caption = "Posterior means and 95% credible intervals.")
+```
+
+```{r}
+posterior_table %>%
+  filter(stringr::str_detect(parameter, "^beta")) %>%
+  mutate(
+    OR_mean = exp(Mean),
+    OR_low  = exp(`2.5%`),
+    OR_high = exp(`97.5%`)
+  ) %>%
+  dplyr::select(parameter, OR_mean, OR_low, OR_high) %>%
+  arrange(parameter) %>%
+  knitr::kable(digits = 3, caption = "Posterior odds ratios for key covariates.")
+```
 
 # Residual Plots
