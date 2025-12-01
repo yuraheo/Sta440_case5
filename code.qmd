@@ -415,6 +415,24 @@ Not random. but structural, driven by site and quarter
 
 # Bayesian model
 
+Reference patient
+```{r}
+age_ref    <- median(x$age, na.rm = TRUE)
+gender_ref <- as.numeric(names(sort(table(x$gender_num), decreasing = TRUE))[1])
+ems_ref    <- as.numeric(names(sort(table(x$transport_num), decreasing = TRUE))[1])
+age_ref
+gender_ref
+ems_ref
+
+```
+age = 70
+gender = 0 (female)
+race = Caucasian
+EMS = 0, notify = 0
+TPA = 0, thrombectomy = 0, no complications
+site effect = average = 0
+
+
 ```{r}
 model_string <- "
 model {
@@ -431,9 +449,9 @@ model {
     logit(p[i]) <-
         beta0 +
         beta_age   * age[i] +
-        beta_gender * gender[i] +          # assume 0/1
+        beta_gender * gender[i] +          # 0/1
         beta_ems   * transport[i] +        # EMS vs car
-        beta_not   * notify[i] +
+        beta_not   * notify[i] +           # pre-hosp notification
         beta_tpa   * had_tpa[i] +
         beta_thr   * had_thromb[i] +
         beta_tpaC  * tpa_comp[i] +
@@ -474,7 +492,8 @@ model {
 
 
   ################################################
-  # 1. AGE MODEL: age | site, time (FIRST in ordering)
+  # 1. AGE MODEL: age | transport, notify, site, time, gender
+  #    (p(age | transport, notify, z))
   ################################################
 
   for (i in 1:N) {
@@ -482,12 +501,16 @@ model {
     mu_age[i] <-
         alpha0 +
         alpha_time[ time[i] ] +
-        alpha_gender * gender[i] +    # optional, you can drop if you want simpler
-        u_site_age[ site[i] ]
+        alpha_gender * gender[i] +
+        alpha_tr     * transport[i] +   # allow EMS to shift age mix
+        alpha_not    * notify[i] +      # allow notification to shift age mix
+        u_site_age[ site[i] ]           # site random effect
   }
 
   alpha0       ~ dnorm(0, 1.0E-4)
   alpha_gender ~ dnorm(0, 1.0E-4)
+  alpha_tr     ~ dnorm(0, 1.0E-4)      
+  alpha_not    ~ dnorm(0, 1.0E-4)     
 
   for (t in 1:nTime) {
     alpha_time[t] ~ dnorm(0, 1.0E-4)
@@ -504,22 +527,26 @@ model {
 
 
   ################################################
-  # 2. NOTIFY MODEL: notify | age, site, time (SECOND)
+  # 2. NOTIFY MODEL: notify | transport, site, time, gender
+  #    (p(notify | transport, z))
   ################################################
 
   for (i in 1:N) {
+    # notify is only meaningful if transport == 1 (EMS).
+    # If transport[i] = 0, then pi_not[i] ≈ 0, so notify[i] ≈ 0.
     notify[i] ~ dbern(pi_not[i])
 
-    logit(pi_not[i]) <-
+    pi_not[i] <- pi_ems[i] * transport[i]
+
+    logit(pi_ems[i]) <-
         delta0 +
-        delta_age   * age[i] +
         delta_time[ time[i] ] +
+        delta_gender * gender[i] +
         u_site_not[ site[i] ]
   }
 
-  delta0    ~ dnorm(0, 1.0E-4)
-  delta_age ~ dnorm(0, 1.0E-4)
-
+  delta0        ~ dnorm(0, 1.0E-4)
+  delta_gender  ~ dnorm(0, 1.0E-4)    
   for (t in 1:nTime) {
     delta_time[t] ~ dnorm(0, 1.0E-4)
   }
@@ -532,7 +559,8 @@ model {
 
 
   ################################################
-  # 3. TRANSPORT MODEL: transport | age, notify, site, time (THIRD)
+  # 3. TRANSPORT MODEL: transport | site, time, gender
+  #    (p(transport | z))
   ################################################
 
   for (i in 1:N) {
@@ -540,16 +568,13 @@ model {
 
     logit(pi_tr[i]) <-
         gamma0 +
-        gamma_age   * age[i] +
-        gamma_not   * notify[i] +
         gamma_time[ time[i] ] +
+        gamma_gender * gender[i] +
         u_site_tr[ site[i] ]
   }
 
-  gamma0    ~ dnorm(0, 1.0E-4)
-  gamma_age ~ dnorm(0, 1.0E-4)
-  gamma_not ~ dnorm(0, 1.0E-4)
-
+  gamma0        ~ dnorm(0, 1.0E-4)
+  gamma_gender  ~ dnorm(0, 1.0E-4)     
   for (t in 1:nTime) {
     gamma_time[t] ~ dnorm(0, 1.0E-4)
   }
@@ -572,12 +597,78 @@ model {
   for (s in 1:nSite) {
     pi_race[s, 1:nRace] ~ ddirch(alpha[])
   }
+  
+  ################################################
+  # 5. DERIVED QUANTITIES: baseline (Y1Q1,Y1Q2)
+  #    vs final (Y2Q3,Y2Q4)
+  ################################################
+  # Collect beta_time for baseline quarters
+  for (j in 1:nBase) {
+    beta_time_base_j[j] <- beta_time[ base_times[j] ]
+  }
+
+  # Collect beta_time for final quarters
+  for (j in 1:nFinal) {
+    beta_time_final_j[j] <- beta_time[ final_times[j] ]
+  }
+
+  # Average effects over baseline and final periods
+  beta_time_baseline <- mean(beta_time_base_j[1:nBase])
+  beta_time_final    <- mean(beta_time_final_j[1:nFinal])
+
+  # Overall program effect on log-odds and OR
+  time_effect <- beta_time_final - beta_time_baseline
+  OR_time     <- exp(time_effect)
+  
+  # Reference patient settings:
+  # age_ref = 70, gender = 0, race = reference (nRace),
+  # no EMS, no notify, no TPA/thrombectomy/complications,
+  # and average site random effect (0).
+  age_ref <- 70
+
+  logit_p_baseline <-
+      beta0 +
+      beta_age * age_ref +
+      beta_gender * 0 +
+      beta_ems * 0 +
+      beta_not * 0 +
+      beta_tpa * 0 +
+      beta_thr * 0 +
+      beta_tpaC * 0 +
+      beta_thrC * 0 +
+      beta_time_baseline +
+      beta_race[nRace] +   # = 0
+      0                    # average u_site_out
+
+  logit_p_final <-
+      beta0 +
+      beta_age * age_ref +
+      beta_gender * 0 +
+      beta_ems * 0 +
+      beta_not * 0 +
+      beta_tpa * 0 +
+      beta_thr * 0 +
+      beta_tpaC * 0 +
+      beta_thrC * 0 +
+      beta_time_final +
+      beta_race[nRace] +
+      0
+
+  p_baseline <- exp(logit_p_baseline) / (1 + exp(logit_p_baseline))
+  p_final    <- exp(logit_p_final)    / (1 + exp(logit_p_final))
+  improvement <- p_final - p_baseline
 
 }
 "
+
 ```
 
 ```{r}
+time_levels <- levels(x$time2)
+
+baseline_times <- which(time_levels %in% c("Y1Q1", "Y1Q2"))
+final_times    <- which(time_levels %in% c("Y2Q3", "Y2Q4"))
+
 data_list <- list(
   N      = nrow(x),
   nSite  = nlevels(x$site_id),
@@ -599,7 +690,11 @@ data_list <- list(
   site   = as.integer(x$site_id),                  # 1..nSite
   time   = as.integer(x$time2),                    # 1..nTime
 
-  alpha  = rep(0.5, nlevels(x$race2))              # Jeffreys prior for race
+  alpha  = rep(0.5, nlevels(x$race2)),              # Jeffreys prior for race
+  nBase  = length(baseline_times),
+  nFinal = length(final_times),
+  base_times  = baseline_times,
+  final_times = final_times
 )
 ```
 
