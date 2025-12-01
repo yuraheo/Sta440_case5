@@ -486,11 +486,11 @@ model {
     beta_time[t] ~ dnorm(0, 1.0E-4)
   }
 
-  # Race effects, last category as reference
+  # Race effects, first category as reference (Caucasian)
   for (r in 1:(nRace-1)) {
     beta_race[r] ~ dnorm(0, 1.0E-4)
   }
-  beta_race[nRace] <- 0
+  beta_race[1] <- 0
 
   # Site random intercepts for outcome
   for (s in 1:nSite) {
