@@ -135,6 +135,38 @@ missingness correlation plot
 vis_miss(x)
 ```
 
+missingness by time stage
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+x %>%
+  group_by(time_stage) %>%
+  summarise(across(everything(), ~ mean(is.na(.))), .groups = "drop") %>%
+  pivot_longer(
+    cols = -time_stage,
+    names_to = "variable",
+    values_to = "prop_missing"
+  ) %>%
+  ggplot(aes(x = variable, y = time_stage, fill = prop_missing)) +
+  geom_tile(color = "white") +
+  scale_fill_viridis_c(
+    name  = "Proportion\nMissing",
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    title = "Missingness by Time Stage (Baseline / Mid / Final)",
+    x = "Variable",
+    y = "Time Stage"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
 age missingness by site x quarter
 
 ```{r}
