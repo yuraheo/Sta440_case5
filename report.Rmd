@@ -12,3 +12,19 @@ execute:
   message: false
   echo: false
 ---
+
+# Background
+
+# Exploratory Data Analysis
+
+# Model Rationale and Implementation
+## Rationale
+## Evaluation
+
+# Results
+
+# Conclusion
+
+# Limitations and Future Directions
+
+# Appendix
