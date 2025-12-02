@@ -482,9 +482,11 @@ model {
   beta_thrC   ~ dnorm(0, 1.0E-4)
 
   # Time (quarter) effects
-  for (t in 1:nTimeStage) {
-    beta_time[t] ~ dnorm(0, 1.0E-4)
-  }
+  beta_time[1] <- 0                     # baseline = reference level
+
+for (t in 2:nTimeStage) {             # mid, final
+  beta_time[t] ~ dnorm(0, 1.0E-4)
+}
 
   # Race effects, first category as reference (Caucasian)
   for (r in 1:(nRace-1)) {
