@@ -521,7 +521,7 @@ for (t in 2:nTimeStage) {             # mid, final
 }
 
   # Race effects, first category as reference (Caucasian)
-  for (r in 1:(nRace-1)) {
+  for (r in 2:nRace) {
     beta_race[r] ~ dnorm(0, 1.0E-4)
   }
   beta_race[1] <- 0
