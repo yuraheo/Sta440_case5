@@ -841,3 +841,153 @@ posterior_table %>%
 ```
 
 # Residual Plots
+```{r}
+comp1_design <- comp1 %>%
+  mutate(
+    age = as.numeric(age),
+    time_stage = case_when(
+      time2 %in% c("Y1Q1", "Y1Q2") ~ "baseline",
+      time2 %in% c("Y1Q3", "Y1Q4", "Y2Q1", "Y2Q2") ~ "mid",
+      time2 %in% c("Y2Q3", "Y2Q4") ~ "final",
+      TRUE ~ NA_character_
+    ),
+    time_stage = factor(time_stage, levels = time_stage_levels),
+    time_stage_idx = as.integer(time_stage),
+    gender_num = if_else(gender == "Female", 1, 0),
+    transport_num = case_when(emsvscar == 1 ~ 1,
+                              emsvscar == 0 ~ 0,
+                              TRUE ~ NA_real_),
+    notify_num = case_when(pre_hosp_notify == "Yes" ~ 1,
+                           pre_hosp_notify == "No" ~ 0,
+                           TRUE ~ NA_real_),
+    had_tpa_num = as.integer(had_tpa),
+    had_thromb_num = as.integer(had_thrombectomy),
+    tpa_comp_num = as.integer(tpa_complic),
+    thr_comp_num = as.integer(thr_complic),
+    home_num = as.integer(home_or_rehab),
+    race_idx = as.integer(factor(race2, levels = levels(x$race2)))
+  ) %>%
+  drop_na(age, time_stage_idx, race_idx, transport_num, notify_num)
+
+posterior_matrix <- as.matrix(posterior_samples)
+draw_ids <- sample(seq_len(nrow(posterior_matrix)), size = min(2000, nrow(posterior_matrix)))
+beta_time_cols <- grep("^beta_time", colnames(posterior_matrix), value = TRUE)
+beta_race_cols <- grep("^beta_race", colnames(posterior_matrix), value = TRUE)
+
+compute_probs <- function(draw_vec) {
+  beta_time <- as.numeric(draw_vec[beta_time_cols])
+  time_effect <- beta_time[comp1_design$time_stage_idx]
+
+  race_lookup <- rep(0, length(levels(x$race2)))
+  if (length(beta_race_cols) > 0) {
+    for (col in beta_race_cols) {
+      idx <- as.integer(gsub("beta_race\\[(\\d+)\\]", "\\1", col))
+      race_lookup[idx] <- as.numeric(draw_vec[col])
+    }
+  }
+  race_effect <- race_lookup[comp1_design$race_idx]
+
+  eta <- as.numeric(draw_vec["beta0"]) +
+    as.numeric(draw_vec["beta_age"])    * comp1_design$age +
+    as.numeric(draw_vec["beta_gender"]) * comp1_design$gender_num +
+    as.numeric(draw_vec["beta_ems"])    * comp1_design$transport_num +
+    as.numeric(draw_vec["beta_not"])    * comp1_design$notify_num +
+    as.numeric(draw_vec["beta_tpa"])    * comp1_design$had_tpa_num +
+    as.numeric(draw_vec["beta_thr"])    * comp1_design$had_thromb_num +
+    as.numeric(draw_vec["beta_tpaC"])   * comp1_design$tpa_comp_num +
+    as.numeric(draw_vec["beta_thrC"])   * comp1_design$thr_comp_num +
+    time_effect +
+    race_effect
+
+  plogis(eta)
+}
+
+pred_matrix <- sapply(draw_ids, function(idx) compute_probs(posterior_matrix[idx, ]))
+posterior_mean_pred <- rowMeans(pred_matrix)
+
+residuals_df <- comp1_design %>%
+  mutate(
+    pred = posterior_mean_pred,
+    resid = home_num - posterior_mean_pred,
+    abs_resid = abs(resid),
+    outcome = factor(home_num, labels = c("Poor outcome", "Good outcome")),
+    pearson = (home_num - posterior_mean_pred) / sqrt(posterior_mean_pred * (1 - posterior_mean_pred))
+  )
+
+residual_summary <- residuals_df %>%
+  summarise(
+    mean_resid = mean(resid),
+    sd_resid = sd(resid),
+    extreme = mean(abs_resid > 0.5)
+  )
+
+residual_summary
+```
+
+```{r}
+ggplot(residuals_df, aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.25, color = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Posterior Predictive Residuals",
+    x = "Posterior Mean Predicted Probability",
+    y = "Observed - Predicted"
+  )
+```
+
+```{r}
+ggplot(residuals_df, aes(x = pred, y = resid, color = outcome)) +
+  geom_point(alpha = 0.25) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ outcome) +
+  labs(
+    title = "Residuals by Observed Outcome",
+    x = "Posterior Mean Predicted Probability",
+    y = "Observed - Predicted",
+    color = "Outcome"
+  )
+```
+
+```{r}
+ggplot(residuals_df, aes(x = pred, y = pearson)) +
+  geom_point(alpha = 0.25, color = "darkorange") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Pearson Residuals",
+    x = "Posterior Mean Predicted Probability",
+    y = "Pearson Residual"
+  )
+```
+
+```{r}
+ggplot(residuals_df, aes(x = resid)) +
+  geom_histogram(bins = 40, fill = "gray70", color = "white") +
+  labs(
+    title = "Distribution of Posterior Residuals",
+    x = "Residual",
+    y = "Count"
+  )
+```
+
+```{r}
+bayes_calibration <- residuals_df %>%
+  mutate(bin = ntile(pred, 10)) %>%
+  group_by(bin) %>%
+  summarise(
+    mean_pred = mean(pred),
+    obs_rate = mean(home_num),
+    .groups = "drop"
+  )
+
+ggplot(bayes_calibration, aes(x = mean_pred, y = obs_rate)) +
+  geom_point(color = "firebrick") +
+  geom_line(color = "firebrick") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(
+    title = "Bayesian Calibration Curve",
+    x = "Posterior Mean Predicted Probability",
+    y = "Observed Proportion"
+  )
+```
+
+Posterior residuals (computed with site-specific effects set to zero) have a mean of `r round(residual_summary$mean_resid, 3)` with a spread of `r round(residual_summary$sd_resid, 3)`. Only `r scales::percent(residual_summary$extreme, accuracy = 0.1)` of cases fall outside ±0.5, suggesting no major systematic bias. The scatter plot shows slightly wider residuals for high predicted probabilities, indicating greater uncertainty among the most certain predictions, but no strong trend or curvature. The histogram is close to symmetric around zero, implying the model neither consistently over- nor under-predicts. The calibration curve tracks the diagonal well except for mild under-prediction at the very highest bins, highlighting a small conservative bias for the best-case patients. Overall, the Bayesian model reproduces the observed outcome rates credibly, with residual variation concentrated in clinically extreme cases and additional site-level shrinkage likely to reduce the remaining tails.
