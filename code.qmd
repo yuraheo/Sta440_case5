@@ -787,15 +787,46 @@ Need to look into the mixing for beta0 and beta_age.
 
 # Gelman-Rubin Diagnostic
 ```{r}
-gelman_diag <- gelman.diag(posterior_samples, multivariate = FALSE)
+# Exclude baseline parameters before computing Gelman–Rubin
+params_exclude <- c("beta_race[1]", "beta_time[1]")
+
+# All parameter names in the posterior sample
+all_params <- varnames(posterior_samples)
+
+# Keep everything except excluded parameters
+params_keep <- setdiff(all_params, params_exclude)
+
+# Subset the MCMC object
+posterior_samples_keep <- posterior_samples[, params_keep]
+
+# Compute Gelman–Rubin diagnostic
+gelman_diag <- gelman.diag(posterior_samples_keep, multivariate = FALSE)
+
+# Print result
 gelman_diag
 ```
 Most potential scale-reduction factors are near 1, so indicates that the three chains mixed well.
 
 # Effective Size Results
 ```{r}
-ess_values <- effectiveSize(posterior_samples)
+# Parameters to exclude
+params_exclude <- c("beta_race[1]", "beta_time[1]")
+
+# All parameter names in the posterior sample
+all_params <- varnames(posterior_samples)
+
+# Keep everything except excluded baseline parameters
+params_keep <- setdiff(all_params, params_exclude)
+
+# Subset the MCMC samples
+posterior_samples_keep <- posterior_samples[, params_keep]
+
+# Compute ESS for the remaining parameters
+ess_values <- effectiveSize(posterior_samples_keep)
+
+# Display ESS
 ess_values
+
 ```
 
 # Posterior Results
