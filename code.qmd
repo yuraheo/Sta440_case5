@@ -50,7 +50,7 @@ x <- x %>%
 str(x)
 ```
 
-missingness per variable
+Figure 1: missingness per variable
 ```{r}
 na_table <- x %>% 
   summarise(across(everything(), ~ sum(is.na(.)))) %>% 
@@ -59,7 +59,7 @@ na_table <- x %>%
                values_to = "n_missing") %>%
   arrange(desc(n_missing))
 
-
+print(na_table)
 ```
 
 missingness aggregated by site
