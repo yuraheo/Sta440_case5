@@ -13,12 +13,20 @@ execute:
   echo: false
 ---
 
-# Background
+# Background and Motivation
 
-# Exploratory Data Analysis
+Researchers developed a new stroke awareness program with the goal of reducing the time needed to provide patients with life-saving acute stroke care delivery. The investigation was divided into two time periods: the pre-treatment period, during which researchers developed the program, and the program implementation period, which overlapped with the onset of the COVID-19 pandemic. The goals of the investigation are twofold: to determine the factors associated with “good” stroke care outcomes, defined as a discharge to home or a rehabilitation facility, and to determine if the implementation of the program improved patient outcomes.
+
+# Data and Exploratory Data Analysis
+
+The researchers tracked stroke patient data from 2019-2020 on a quarterly basis, recording a variety of covariate variables, patient demographic information, and the hospital site where treatment took place. The resulting data set had missing data: therefore, it was necessary for us to develop an approach to handling the missingness before creating any models. In the exploratory analysis phase, we sought to first determine if data missingness was missing at random, missing completely at random, or missing not at random. Our findings on data missingness were used to inform our approach to creating an appropriate model for patient outcomes.
+
+To begin our analysis, we first sought to determine which variables were most frequently missing. Figure 1 reveals that the 4 variables with missing data were, in order, patient age, whether the patient was transported to the hospital via car or EMS, if the hospital was notified prior to patient arrival if they were transported by EMS, and patient race. To determine whether the data is missing completely at random, we investigated whether there were patterns to the missingness. Figures 2 and 3 are heatmaps visualizing the proportion of data missing from the variables. Figure 2 displays proportion missingness by time quarter, while Figure 3 displays missingness by hospital site. Inspection of Figure 2 reveals that data missingness appears worse for certain time quarters, most severely in Y1Q1. Figure 3 reveals that certain hospitals, namely site IDs 140, 150, and 170
 
 # Model Rationale and Implementation
+
 ## Rationale
+
 ## Evaluation
 
 # Results
