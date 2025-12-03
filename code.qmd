@@ -62,7 +62,7 @@ na_table <- x %>%
 print(na_table)
 ```
 
-missingness aggregated by site
+Figure 3: missingness aggregated by site
 ```{r}
 x %>%
   group_by(site_id) %>%
@@ -135,7 +135,7 @@ missingness correlation plot
 vis_miss(x)
 ```
 
-missingness by time stage
+Figure 2: missingness by time stage
 ```{r}
 library(dplyr)
 library(tidyr)
