@@ -1021,4 +1021,16 @@ ggplot(bayes_calibration, aes(x = mean_pred, y = obs_rate)) +
   )
 ```
 
+```{r}
+ggplot(residuals_df, aes(x = age, y = resid, color = outcome)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(se = FALSE) +
+  labs(
+    title = "Residuals vs Age",
+    x = "Age",
+    y = "Observed - Predicted",
+    color = "Outcome"
+  )
+```
+
 Posterior residuals (computed with site-specific effects set to zero) have a mean of `r round(residual_summary$mean_resid, 3)` with a spread of `r round(residual_summary$sd_resid, 3)`. Only `r scales::percent(residual_summary$extreme, accuracy = 0.1)` of cases fall outside ±0.5, suggesting no major systematic bias. The scatter plot shows slightly wider residuals for high predicted probabilities, indicating greater uncertainty among the most certain predictions, but no strong trend or curvature. The histogram is close to symmetric around zero, implying the model neither consistently over- nor under-predicts. The calibration curve tracks the diagonal well except for mild under-prediction at the very highest bins, highlighting a small conservative bias for the best-case patients. Overall, the Bayesian model reproduces the observed outcome rates credibly, with residual variation concentrated in clinically extreme cases and additional site-level shrinkage likely to reduce the remaining tails.
