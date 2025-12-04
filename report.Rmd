@@ -13,6 +13,14 @@ execute:
   echo: false
 ---
 
+```{r}
+library(dplyr)
+library(stringr)
+library(tibble)
+
+posterior_summary <- readRDS("results/posterior_summary.rds")
+```
+
 # Background and Motivation
 
 Researchers developed a new stroke awareness program with the goal of reducing the time needed to provide patients with life-saving acute stroke care delivery. The investigation was divided into two time periods: the pre-treatment period, during which researchers developed the program, and the program implementation period, which overlapped with the onset of the COVID-19 pandemic. The goals of the investigation are twofold: to determine the factors associated with “good” stroke care outcomes, defined as a discharge to home or a rehabilitation facility, and to determine if the implementation of the program improved patient outcomes.
@@ -28,12 +36,65 @@ To begin our analysis, we first sought to determine which variables were most fr
 # Model Rationale and Implementation
 
 ### Model Rationale
-To address missing data based on our exploratory findings, we implemented a fully Bayesian joint model that simultaneously imputes missing values and estimats associations, following the factorization:
+We factor the joint distribution as
 
+$$
+\begin{aligned}
+p(\text{age},\text{notify},\text{transport},\text{race},\text{home}\mid \mathbf{z})
+&= p(\text{home}\mid\text{age},\text{notify},\text{transport},\text{race},\mathbf{z})\\
+&\quad\times p(\text{age}\mid\text{notify},\text{transport},\mathbf{z})\\
+&\quad\times p(\text{notify}\mid\text{transport},\mathbf{z})\\
+&\quad\times p(\text{transport}\mid\mathbf{z})\\
+&\quad\times p(\text{race}\mid\text{site}).
+\end{aligned}
+$$
+
+with $\mathbf{z}$ the fully observed covariates (site, time stage, gender). This ordering mirrors the care workflow (arrival/notification precedes discharge) and lets us impute missing Age/notify/transport inside the MCMC rather than as a preprocessing step. Time is collapsed into three stages—baseline (Y1Q1–Y1Q2), mid (Y1Q3–Y2Q2), final (Y2Q3–Y2Q4)—to stabilize time effects and reflect the program rollout. Site-level random intercepts allow modest heterogeneity across centers. Fixed effects use weakly informative $\mathcal{N}(0,10^4)$ priors; variance components use half-uniform priors; and site-specific race probabilities follow a Dirichlet($\tfrac12,\tfrac12,\tfrac12$) prior per the instructor guidance.
 
 ### Model Implementation
 
+1. **Outcome (home vs. other):**
+$$
+\begin{aligned}
+\text{home}_i &\sim \text{Bernoulli}(p_i),\\
+\operatorname{logit}(p_i) &= \beta_0 + \beta_{\text{age}}\text{Age}_i + \beta_{\text{gender}}\text{Gender}_i
++ \beta_{\text{ems}}\text{Transport}_i + \beta_{\text{not}}\text{Notify}_i + \beta_{\text{tpa}}\text{TPA}_i \\
+&\quad + \beta_{\text{thr}}\text{Thromb}_i + \beta_{\text{tpaC}}\text{TPAComp}_i + \beta_{\text{thrC}}\text{ThrComp}_i
++ \beta_{\text{time}}[t_i] + \beta_{\text{race}}[r_i] + u^{(out)}_{\text{site}[i]}.
+\end{aligned}
+$$
+
+2. **Age $\mid$ transport, notify, site, time stage, gender**
+$$
+\text{Age}_i\sim\mathcal{N}\big(\alpha_0 + \alpha_{\text{time}}[t_i] + \alpha_{\text{gender}}\,\text{Gender}_i + \alpha_{\text{tr}}\,\text{Transport}_i + \alpha_{\text{not}}\,\text{Notify}_i + u^{(age)}_{\text{site}[i]},\,\sigma^2_{\text{age}}\big).
+$$
+
+3. **Notify $\mid$ transport, site, time stage, gender**
+$$
+\text{Notify}_i\sim\text{Bernoulli}(\pi^{(not)}_i),\quad \operatorname{logit}(\pi^{(not)}_i)=\delta_0 + \delta_{\text{tr}}\,\text{Transport}_i + \delta_{\text{time}}[t_i] + \delta_{\text{gender}}\,\text{Gender}_i + u^{(not)}_{\text{site}[i]}.
+$$
+
+4. **Transport $\mid$ site, time stage, gender**
+$$
+\text{Transport}_i\sim\text{Bernoulli}(\pi^{(tr)}_i),\quad \operatorname{logit}(\pi^{(tr)}_i)=\gamma_0 + \gamma_{\text{time}}[t_i] + \gamma_{\text{gender}}\,\text{Gender}_i + u^{(tr)}_{\text{site}[i]}.
+$$
+
+5. **Race $\mid$ site**
+$$
+\text{Race}_i\sim\text{Categorical}\big(\pi^{(race)}_{\text{site}[i],\cdot}\big),\quad \pi^{(race)}_{s,\cdot}\sim\text{Dirichlet}\big(\tfrac12,\tfrac12,\tfrac12\big).
+$$
+
+Time-stage effects are deviations from the baseline stage (fixed to zero); site random effects are mean-zero Normals with their own scale parameters. We run 3 chains with 2,000 burn-in iterations and 8,000 post–burn-in draws, caching the posterior samples for reproducibility across collaborators.
+
 ### Model Evaluation
+
+We assessed convergence and fit using multiple diagnostics:
+
+- **Trace plots and effective sample sizes**: Core parameters (age, EMS, TPA, complications, time-stage effects, site SDs) show well-mixed “fuzzy caterpillars” with effective sample sizes in the hundreds to thousands, indicating good mixing despite the hierarchical structure.
+
+- **Gelman–Rubin (R-hat)**: All substantive parameters have PSRFs $\approx$ 1.00–1.02; race and time-stage effects mix well despite small subgroup sizes. Intercept and age show mild autocorrelation but remain below typical concern thresholds (upper CI $\approx$ 1.04).
+
+- **Posterior predictive checks**: Residuals split by outcome behave as expected for binary data; Pearson residuals only spike when the model was highly confident and the outcome disagreed. The Bayesian calibration curve tracks the diagonal closely, with only slight under-prediction in mid–high probability bins, indicating well-calibrated probabilities overall.
 
 # Results
 ```{r}
@@ -68,8 +129,7 @@ posterior_odd_ratios_table <- posterior_table %>%
     OR_high = exp(`97.5%`)
   ) %>%
   dplyr::select(parameter, OR_mean, OR_low, OR_high) %>%
-  arrange(parameter) %>%
-  knitr::kable(digits = 3, caption = "Posterior odds ratios for key covariates.")
+  arrange(parameter)
 
 ```
 
@@ -83,19 +143,16 @@ Time effects provided insight into whether outcomes improved over the study peri
 
 # Limitations and Future Directions
 
+\newpage
+
 # Appendix
-```{r}
-#| label: tbl-posterior-table
-#| fig-cap: "Posterior means and 95% credible intervals."
-posterior_table |>
-  knitr::kable(digits = 3)
+```{r tbl-posterior-table, echo=FALSE}
+#| tbl-cap: "Posterior means and 95% credible intervals."
+
+posterior_table |> knitr::kable(digits = 3)
 ```
 
-
-```{r}
-#| label: tbl-posterior-odd-ratios-table
-#| fig-cap: "Posterior odds ratios for key covariates."
-posterior_odd_ratios_table |>
-  knitr::kable(digits = 3)
+```{r tbl-posterior-odd-ratios-table, echo=FALSE}
+#| tbl-cap: "Posterior odds ratios for key covariates."
+posterior_odd_ratios_table |> knitr::kable(digits = 3)
 ```
-
