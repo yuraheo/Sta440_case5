@@ -27,14 +27,75 @@ To begin our analysis, we first sought to determine which variables were most fr
 
 # Model Rationale and Implementation
 
-## Rationale
+### Model Rationale
+To address missing data based on our exploratory findings, we implemented a fully Bayesian joint model that simultaneously imputes missing values and estimats associations, following the factorization:
 
-## Evaluation
+
+### Model Implementation
+
+### Model Evaluation
 
 # Results
+```{r}
+posterior_stats <- posterior_summary$statistics %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("parameter")
+
+posterior_quants <- posterior_summary$quantiles %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("parameter")
+
+posterior_table <- posterior_stats %>%
+  dplyr::select(parameter, Mean, SD) %>%
+  left_join(
+    posterior_quants %>%
+      dplyr::select(parameter, `2.5%`, `50%`, `97.5%`),
+    by = "parameter"
+  ) %>%
+  filter(
+    stringr::str_detect(
+      parameter,
+      "^(beta_(age|tpa|thr|ems|not|time|race)|sigma_site_out)"
+    )
+  )
+
+
+posterior_odd_ratios_table <- posterior_table %>%
+  filter(stringr::str_detect(parameter, "^beta")) %>%
+  mutate(
+    OR_mean = exp(Mean),
+    OR_low  = exp(`2.5%`),
+    OR_high = exp(`97.5%`)
+  ) %>%
+  dplyr::select(parameter, OR_mean, OR_low, OR_high) %>%
+  arrange(parameter) %>%
+  knitr::kable(digits = 3, caption = "Posterior odds ratios for key covariates.")
+
+```
+
+The posterior summary Table (@tbl-posterior-table) and the (@tbl-posterior-odd-ratios-table) indicate several strong associations. Each additional year of age is associated with roughly a 6-7% decrease in the odds or a good discharge outcome (OR = 0.94), Patients arriving via EMS had about 65% lower odds of being discharged home or to  rehabilitation compared to those arriving by car (OR = 0.34) consistent with EMS patients having more severe strokes. Complications were among the strongest predictors of poor outcomes: thrombectomy complications were associated with an approximately 89% reduction in the odds of a good discharge, and tPA complications with a 75% reduction. Race differences were also noticable: African American patients had about 35% lower odds of good outcomes compared to Caucasian patients.   
+
+
+Time effects provided insight into whether outcomes improved over the study period. Compared with baseline, the mid-study period and final periods were associated with roughly 20-30% higher odds of a good discharge outcome. When translated into predicted probabilities for a reference patient (female, Caucasian, median age(70), car arrival, no complications, average site), the model estimates an absolute improvement of about 2-4 percent points from baseline to the final study period. Taken together with the residual and calibration diagnostics, these findings suggest modest but consistent evidence that outcomes improved over time. 
+
 
 # Conclusion
 
 # Limitations and Future Directions
 
 # Appendix
+```{r}
+#| label: tbl-posterior-table
+#| fig-cap: "Posterior means and 95% credible intervals."
+posterior_table |>
+  knitr::kable(digits = 3)
+```
+
+
+```{r}
+#| label: tbl-posterior-odd-ratios-table
+#| fig-cap: "Posterior odds ratios for key covariates."
+posterior_odd_ratios_table |>
+  knitr::kable(digits = 3)
+```
+
