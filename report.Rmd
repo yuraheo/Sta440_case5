@@ -152,6 +152,10 @@ Time effects provided insight into whether outcomes improved over the study peri
 
 
 # Conclusion
+The research combined exploratory analysis with a joint Bayesian modeling framework to understand factors contributing to good stroke care outcomes and to evaluate whether outcomes improved after the implementation of a stroke awarenenss program. EDA revealed systematic missingness patterns across both time and hospital sites, particularly for age and pre-hospital notification, motivating the need for a modeling approach that integrates missing-data handling directly into the likelihood. The joint model achieved this by simultaneously estimating outcome relationships and imputing missing covariates through a hierarchical factorization informed by clinical workflow and site-level structure.  
+ 
+Posterior estimates highlighted several clinically meaningful predictors of patient discharge outcomes. Older age, EMS transport, and post-procedural complications substantially reduced the likelihood of being discharged home or to rehabilitation, while race differencees were also observed, with African American patients experiencing lower odds of favorable outcomes relative to Caucasian patients. Importantly, analysis of time-stage effects provided evidence that outcomes improved following program implementation. For a typical reference patient, predicted probabilities of a good discharge increased modestly, by approximately 2-4 percentage points, from baseline to the final study period.  
+
 
 # Limitations and Future Directions
 
@@ -306,6 +310,8 @@ residual_summary <- residuals_df %>%
     sd_resid = sd(resid),
     extreme = mean(abs_resid > 0.5)
   )
+
+```
 
 ```{r tbl-resid-summary, echo=FALSE}
 #| tbl-cap: "Summary of posterior residuals."
