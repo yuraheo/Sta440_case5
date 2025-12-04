@@ -159,6 +159,8 @@ Posterior estimates highlighted several clinically meaningful predictors of pati
 
 # Limitations and Future Directions
 
+Although the joint model imputes missing values coherently, it still relies on the assumption that missingness is ignorable given the modeled covariates. If missingness depends on unobserved factors, bias may remain. In terms of site-level heterogeneity, substantial relies on the assumption that missingness is ignorable given the modeled covariates. If missingness depends on unobserved factors, bias may remain. Future work can expand the model to incorporate dynamic program effects, explore interactions between treatment pathways and demographics, or evaluate whether improvements were distributed equitably across patient subgroups.   
+
 \newpage
 
 # Appendix
