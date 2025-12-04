@@ -7,6 +7,8 @@ format:
     documentclass: article
     fontsize: 11pt
 geometry: margin=1in
+header-includes:
+  - \usepackage{float}
 execute: 
   warning: false
   message: false
@@ -17,8 +19,19 @@ execute:
 library(dplyr)
 library(stringr)
 library(tibble)
+library(ggplot2)
+library(mice)
+library(coda)
+library(janitor)
+library(nlme)
+library(broom)
+library(knitr)
+library(tidyverse)
+library(naniar)
+
 
 posterior_summary <- readRDS("results/posterior_summary.rds")
+posterior_samples <- readRDS("results/posterior_samples_jags.rds")
 ```
 
 # Background and Motivation
@@ -53,10 +66,10 @@ with $\mathbf{z}$ the fully observed covariates (site, time stage, gender). This
 
 ### Model Implementation
 
-1. **Outcome (home vs. other):**
+1. **Outcome (home vs. other):** $\text{home}_i \sim \text{Bernoulli}(p_i)$
+
 $$
 \begin{aligned}
-\text{home}_i &\sim \text{Bernoulli}(p_i),\\
 \operatorname{logit}(p_i) &= \beta_0 + \beta_{\text{age}}\text{Age}_i + \beta_{\text{gender}}\text{Gender}_i
 + \beta_{\text{ems}}\text{Transport}_i + \beta_{\text{not}}\text{Notify}_i + \beta_{\text{tpa}}\text{TPA}_i \\
 &\quad + \beta_{\text{thr}}\text{Thromb}_i + \beta_{\text{tpaC}}\text{TPAComp}_i + \beta_{\text{thrC}}\text{ThrComp}_i
@@ -130,7 +143,6 @@ posterior_odd_ratios_table <- posterior_table %>%
   ) %>%
   dplyr::select(parameter, OR_mean, OR_low, OR_high) %>%
   arrange(parameter)
-
 ```
 
 The posterior summary Table (@tbl-posterior-table) and the (@tbl-posterior-odd-ratios-table) indicate several strong associations. Each additional year of age is associated with roughly a 6-7% decrease in the odds or a good discharge outcome (OR = 0.94), Patients arriving via EMS had about 65% lower odds of being discharged home or to  rehabilitation compared to those arriving by car (OR = 0.34) consistent with EMS patients having more severe strokes. Complications were among the strongest predictors of poor outcomes: thrombectomy complications were associated with an approximately 89% reduction in the odds of a good discharge, and tPA complications with a 75% reduction. Race differences were also noticable: African American patients had about 35% lower odds of good outcomes compared to Caucasian patients.   
@@ -146,6 +158,239 @@ Time effects provided insight into whether outcomes improved over the study peri
 \newpage
 
 # Appendix
+
+## Convergence diagnostics
+```{r, echo=FALSE}
+#| label: tbl-ess
+#| tbl-cap: "Effective sample sizes for core parameters."
+#| tbl-pos: H
+ess_vals <- effectiveSize(posterior_samples)
+ess_table <- tibble(parameter = names(ess_vals), ess = as.numeric(ess_vals))
+knitr::kable(ess_table, digits = 1)
+```
+
+```{r, echo=FALSE}
+#| label: tbl-rhat
+#| tbl-cap: "Gelman–Rubin PSRF for monitored parameters."
+#| tbl-pos: H
+psrf <- gelman.diag(posterior_samples, multivariate = FALSE)$psrf
+rhat_table <- tibble(
+  parameter = rownames(psrf),
+  point_est = psrf[, 1],
+  upper_ci = psrf[, 2]
+)
+knitr::kable(rhat_table, digits = 3)
+```
+
+```{r, echo=FALSE}
+#| label: fig-trace
+#| fig-cap: "Trace plots for selected parameters."
+#| fig-pos: H
+old_par <- par(mfrow = c(2, 2))
+traceplot(posterior_samples[, c("beta0", "beta_age", "beta_tpa", "beta_thr")])
+par(old_par)
+```
+
+## Residual diagnostics
+
+```{r}
+load("strokeStudy.RData")
+x <- x %>%
+  janitor::clean_names() %>%
+  rename(emsvscar = em_svs_car) %>%
+  mutate(
+    race2 = na_if(race2, "Missing"),
+    race2 = factor(race2),
+    site_id = factor(site_id),
+    time_stage = case_when(
+      time2 %in% c("Y1Q1","Y1Q2") ~ "baseline",
+      time2 %in% c("Y1Q3","Y1Q4","Y2Q1","Y2Q2") ~ "mid",
+      time2 %in% c("Y2Q3","Y2Q4") ~ "final",
+      TRUE ~ NA_character_
+    ),
+    time_stage = factor(time_stage, levels = c("baseline","mid","final"))
+  )
+time_stage_levels <- c("baseline","mid","final")
+
+impute_vars <- x %>% select(
+  home_or_rehab, age, gender, race2, emsvscar, pre_hosp_notify,
+  had_tpa, had_thrombectomy, tpa_complic, thr_complic, site_id, time2
+)
+
+meth <- make.method(impute_vars); meth["age"] <- "pmm"
+pred <- make.predictorMatrix(impute_vars); pred["age", ] <- 0
+pred["age", c("gender","race2","emsvscar","pre_hosp_notify",
+              "had_tpa","had_thrombectomy","tpa_complic",
+              "thr_complic","site_id","time2","home_or_rehab")] <- 1
+set.seed(2025)
+imp <- mice(impute_vars, m = 1, maxit = 5, method = meth,
+            predictorMatrix = pred, printFlag = FALSE)
+
+comp1 <- complete(imp, 1)
+
+comp1_design <- comp1 %>%
+  mutate(
+    age = as.numeric(age),
+    time_stage = case_when(
+      time2 %in% c("Y1Q1", "Y1Q2") ~ "baseline",
+      time2 %in% c("Y1Q3", "Y1Q4", "Y2Q1", "Y2Q2") ~ "mid",
+      time2 %in% c("Y2Q3", "Y2Q4") ~ "final",
+      TRUE ~ NA_character_
+    ),
+    time_stage = factor(time_stage, levels = time_stage_levels),
+    time_stage_idx = as.integer(time_stage),
+    gender_num = if_else(gender == "Female", 1, 0),
+    transport_num = case_when(emsvscar == 1 ~ 1,
+                              emsvscar == 0 ~ 0,
+                              TRUE ~ NA_real_),
+    notify_num = case_when(pre_hosp_notify == "Yes" ~ 1,
+                           pre_hosp_notify == "No" ~ 0,
+                           TRUE ~ NA_real_),
+    had_tpa_num = as.integer(had_tpa),
+    had_thromb_num = as.integer(had_thrombectomy),
+    tpa_comp_num = as.integer(tpa_complic),
+    thr_comp_num = as.integer(thr_complic),
+    home_num = as.integer(home_or_rehab),
+    race_idx = as.integer(factor(race2, levels = levels(x$race2)))
+  ) %>%
+  drop_na(age, time_stage_idx, race_idx, transport_num, notify_num)
+
+posterior_matrix <- as.matrix(posterior_samples)
+draw_ids <- sample(seq_len(nrow(posterior_matrix)), size = min(2000, nrow(posterior_matrix)))
+beta_time_cols <- grep("^beta_time", colnames(posterior_matrix), value = TRUE)
+beta_race_cols <- grep("^beta_race", colnames(posterior_matrix), value = TRUE)
+
+compute_probs <- function(draw_vec) {
+  beta_time <- as.numeric(draw_vec[beta_time_cols])
+  time_effect <- beta_time[comp1_design$time_stage_idx]
+
+  race_lookup <- rep(0, length(levels(x$race2)))
+  if (length(beta_race_cols) > 0) {
+    for (col in beta_race_cols) {
+      idx <- as.integer(gsub("beta_race\\[(\\d+)\\]", "\\1", col))
+      race_lookup[idx] <- as.numeric(draw_vec[col])
+    }
+  }
+  race_effect <- race_lookup[comp1_design$race_idx]
+
+  eta <- as.numeric(draw_vec["beta0"]) +
+    as.numeric(draw_vec["beta_age"])    * comp1_design$age +
+    as.numeric(draw_vec["beta_gender"]) * comp1_design$gender_num +
+    as.numeric(draw_vec["beta_ems"])    * comp1_design$transport_num +
+    as.numeric(draw_vec["beta_not"])    * comp1_design$notify_num +
+    as.numeric(draw_vec["beta_tpa"])    * comp1_design$had_tpa_num +
+    as.numeric(draw_vec["beta_thr"])    * comp1_design$had_thromb_num +
+    as.numeric(draw_vec["beta_tpaC"])   * comp1_design$tpa_comp_num +
+    as.numeric(draw_vec["beta_thrC"])   * comp1_design$thr_comp_num +
+    time_effect +
+    race_effect
+
+  plogis(eta)
+}
+
+pred_matrix <- sapply(draw_ids, function(idx) compute_probs(posterior_matrix[idx, ]))
+posterior_mean_pred <- rowMeans(pred_matrix)
+
+residuals_df <- comp1_design %>%
+  mutate(
+    pred = posterior_mean_pred,
+    resid = home_num - posterior_mean_pred,
+    abs_resid = abs(resid),
+    outcome = factor(home_num, labels = c("Poor outcome", "Good outcome")),
+    pearson = (home_num - posterior_mean_pred) / sqrt(posterior_mean_pred * (1 - posterior_mean_pred))
+  )
+
+residual_summary <- residuals_df %>%
+  summarise(
+    mean_resid = mean(resid),
+    sd_resid = sd(resid),
+    extreme = mean(abs_resid > 0.5)
+  )
+
+```{r tbl-resid-summary, echo=FALSE}
+#| tbl-cap: "Summary of posterior residuals."
+#| tbl-pos: H
+residual_summary |> knitr::kable(digits = 3)
+```
+
+```{r fig-resid-outcome, echo=FALSE}
+#| fig-cap: "Residuals by observed outcome."
+#| fig-pos: H
+ggplot(residuals_df, aes(x = pred, y = resid, color = outcome)) +
+  geom_point(alpha = 0.25) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ outcome) +
+  labs(
+    title = "Residuals by Observed Outcome",
+    x = "Posterior Mean Predicted Probability",
+    y = "Observed - Predicted",
+    color = "Outcome"
+  )
+```
+
+```{r fig-resid-pearson, echo=FALSE}
+#| fig-cap: "Pearson residuals vs. posterior mean predicted probability."
+#| fig-pos: H
+ggplot(residuals_df, aes(x = pred, y = pearson)) +
+  geom_point(alpha = 0.25, color = "darkorange") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Pearson Residuals",
+    x = "Posterior Mean Predicted Probability",
+    y = "Pearson Residual"
+  )
+```
+
+```{r fig-resid-hist, echo=FALSE}
+#| fig-cap: "Distribution of posterior residuals."
+#| fig-pos: H
+ggplot(residuals_df, aes(x = resid)) +
+  geom_histogram(bins = 40, fill = "gray70", color = "white") +
+  labs(
+    title = "Distribution of Posterior Residuals",
+    x = "Residual",
+    y = "Count"
+  )
+```
+
+```{r fig-calibration, echo=FALSE}
+#| fig-cap: "Bayesian calibration curve (deciles of predicted probability)."
+#| fig-pos: H
+bayes_calibration <- residuals_df %>%
+  mutate(bin = ntile(pred, 10)) %>%
+  group_by(bin) %>%
+  summarise(
+    mean_pred = mean(pred),
+    obs_rate = mean(home_num),
+    .groups = "drop"
+  )
+
+ggplot(bayes_calibration, aes(x = mean_pred, y = obs_rate)) +
+  geom_point(color = "firebrick") +
+  geom_line(color = "firebrick") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(
+    title = "Bayesian Calibration Curve",
+    x = "Posterior Mean Predicted Probability",
+    y = "Observed Proportion"
+  )
+```
+
+```{r fig-resid-age, echo=FALSE}
+#| fig-cap: "Residuals vs. age by observed outcome."
+#| fig-pos: H
+ggplot(residuals_df, aes(x = age, y = resid, color = outcome)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(se = FALSE) +
+  labs(
+    title = "Residuals vs Age",
+    x = "Age",
+    y = "Observed - Predicted",
+    color = "Outcome"
+  )
+```
+
+## Posterior tables
 ```{r tbl-posterior-table, echo=FALSE}
 #| tbl-cap: "Posterior means and 95% credible intervals."
 
