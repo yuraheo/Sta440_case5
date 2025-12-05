@@ -62,7 +62,7 @@ p(\text{age},\text{notify},\text{transport},\text{race},\text{home}\mid \mathbf{
 \end{aligned}
 $$
 
-with $\mathbf{z}$ the fully observed covariates (site, time stage, gender). This ordering mirrors the care workflow (arrival/notification precedes discharge) and lets us impute missing Age/notify/transport inside the MCMC rather than as a preprocessing step. Time is collapsed into three stages: baseline (Y1Q1–Y1Q2), mid (Y1Q3–Y2Q2), final (Y2Q3–Y2Q4) in order to stabilize time effects and reflect the program rollout. Site-level random intercepts allow modest heterogeneity across centers. Fixed effects use weakly informative $\mathcal{N}(0,10^4)$ priors; variance components use half-uniform priors; and site-specific race probabilities follow a Dirichlet($\tfrac12,\tfrac12,\tfrac12$) prior.
+with $\mathbf{z}$ the fully observed covariates (site, time stage, gender). This ordering mirrors the care workflow (arrival/notification precedes discharge) and lets us impute missing Age/notify/transport inside the MCMC rather than as a preprocessing step. This is critical because missingness varies by site and time period, making the assumption of missing completely at random unrealistic. Time is collapsed into three stages: baseline (Y1Q1–Y1Q2), mid (Y1Q3–Y2Q2), final (Y2Q3–Y2Q4) in order to stabilize time effects and reflect the program rollout. Site-level random intercepts allow modest heterogeneity across centers. Fixed effects use weakly informative $\mathcal{N}(0,10^4)$ priors; variance components use half-uniform priors; and site-specific race probabilities follow a Dirichlet($\tfrac12,\tfrac12,\tfrac12$) prior.
 
 ### Model Implementation
 
@@ -119,7 +119,7 @@ We assessed convergence and fit using multiple diagnostics:
 - **Posterior predictive checks**: Residuals split by outcome behave as expected for binary data; Pearson residuals only spike when the model was highly confident and the outcome disagreed. The Bayesian calibration curve tracks the diagonal closely, with only slight under-prediction in mid–high probability bins, indicating well-calibrated probabilities overall (see @fig-resid-outcome, @fig-resid-pearson, @fig-calibration, @fig-resid-age, and @tbl-resid-summary).
 
 # Results
-```{r}
+```{r, echo=FALSE}
 posterior_stats <- posterior_summary$statistics %>%
   as.data.frame() %>%
   tibble::rownames_to_column("parameter")
@@ -157,19 +157,20 @@ posterior_odd_ratios_table <- posterior_table %>%
 The posterior summary Table (@tbl-posterior-table) and the (@tbl-posterior-odd-ratios-table) indicate several strong associations. Each additional year of age is associated with roughly a 6-7% decrease in the odds or a good discharge outcome (OR = 0.94), Patients arriving via EMS had about 65% lower odds of being discharged home or to  rehabilitation compared to those arriving by car (OR = 0.34) consistent with EMS patients having more severe strokes. Complications were among the strongest predictors of poor outcomes: thrombectomy complications were associated with an approximately 89% reduction in the odds of a good discharge, and tPA complications with a 75% reduction. Race differences were also noticable: African American patients had about 35% lower odds of good outcomes compared to Caucasian patients.   
 
 
-Time effects provided insight into whether outcomes improved over the study period. Compared with baseline, the mid-study period and final periods were associated with roughly 20-30% higher odds of a good discharge outcome. When translated into predicted probabilities for a reference patient (female, Caucasian, median age(70), car arrival, no complications, average site), the model estimates an absolute improvement of about 2-4 percent points from baseline to the final study period. Taken together with the residual and calibration diagnostics, these findings suggest modest but consistent evidence that outcomes improved over time. 
+Time effects provided insight into whether outcomes improved over the study period. Compared with baseline, the mid-study period and final periods were associated with roughly 20-30% higher odds of a good discharge outcome. When translated into predicted probabilities for a reference patient (female, Caucasian, median age(70), car arrival, no complications, average site), the model estimates an absolute improvement of about 2-4 percentage points from baseline to the final study period. Taken together with the residual and calibration diagnostics, these findings suggest modest but consistent evidence that outcomes improved over time. 
 
 
 # Conclusion
-The research combined exploratory analysis with a joint Bayesian modeling framework to understand factors contributing to good stroke care outcomes and to evaluate whether outcomes improved after the implementation of a stroke awarenenss program. EDA revealed systematic missingness patterns across both time and hospital sites, particularly for age and pre-hospital notification, motivating the need for a modeling approach that integrates missing-data handling directly into the likelihood. The joint model achieved this by simultaneously estimating outcome relationships and imputing missing covariates through a hierarchical factorization informed by clinical workflow and site-level structure.  
- 
-Posterior estimates highlighted several clinically meaningful predictors of patient discharge outcomes. Older age, EMS transport, and post-procedural complications substantially reduced the likelihood of being discharged home or to rehabilitation, while race differencees were also observed, with African American patients experiencing lower odds of favorable outcomes relative to Caucasian patients. Importantly, analysis of time-stage effects provided evidence that outcomes improved following program implementation. For a typical reference patient, predicted probabilities of a good discharge increased modestly, by approximately 2-4 percentage points, from baseline to the final study period.  
+This study combined exploratory data analysis with a joint Bayesian modeling framework to identify predictors of good stroke discharge outcomes and to evaluate whether outcomes improved following implementation of a stroke awareness program. Exploratory analyses highlighted systematic missingness in age, transport, and notification variables across time and sites, motivating a joint modeling approach capable of imputing missing covariates coherently within the likelihood.
 
+Posterior inference revealed several strong predictors of patient outcomes. Older age, EMS transport, and treatment complications substantially reduced a patient's likelihood of discharge to home or rehabilitation, while race disparities were also evident. Importantly, the estimated time-stage effects suggest that the program may have contributed to improved patient outcomes: for a reference patient, the predicted probability of a good outcome increased modestly, approximately 2–4 percentage points, from baseline to the final study period.
+
+Overall, the joint Bayesian model provided a principled and flexible framework for handling missing data, characterizing associations, and assessing temporal improvements in outcomes.
 
 # Limitations and Future Directions
 
-Although the joint model imputes missing values coherently, it still relies on the assumption that missingness is ignorable given the modeled covariates. If missingness depends on unobserved factors, bias may remain. In terms of site-level heterogeneity, substantial relies on the assumption that missingness is ignorable given the modeled covariates.  
-Future work can expand the model to incorporate dynamic program effects, explore interactions between treatment pathways and demographics, or evaluate whether improvements were distributed equitably across patient subgroups.   
+Although the joint model imputes missing values probabilistically, it still relies on the assumption that missingness is ignorable given the modeled covariates; if missingness depends on unobserved severity or workflow factors, residual bias may persist. In terms of site-level heterogeneity, substantial relies on the assumption that missingness is ignorable given the modeled covariates.  
+Future work could incorporate site-level predictors, patient severity measures, or dynamic time trends to more precisely quantify program effects. Extensions that explore interactions between demographic and clinical variables, or assess whether program benefits were equitably distributed across patient subgroups, would provide additional insight.     
 
 \newpage
 
