@@ -325,6 +325,79 @@ residual_summary <- residuals_df %>%
 
 ```
 
+```{r tbl-figure1, echo=FALSE}
+#| tbl-cap: "Figure 1: Missingness Per Variable"
+#| tbl-pos: H
+time_stage_levels <- c("baseline", "mid", "final")
+
+x <- x %>%
+  clean_names() %>%
+  rename(emsvscar = em_svs_car) %>%
+  mutate(
+    race2 = na_if(race2, "Missing"),
+    race2 = factor(race2),
+    site_id = factor(site_id),
+    home_num = as.integer(home_or_rehab),
+    notify_num = case_when(
+      pre_hosp_notify == "Yes" ~ 1,
+      pre_hosp_notify == "No" ~ 0,
+      TRUE ~ NA_real_
+    ),
+    transport_num = case_when(
+      emsvscar == 1 ~ 1,
+      emsvscar == 0 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    gender_num = if_else(gender == "Female", 1, 0),
+    time_stage = case_when(
+      time2 %in% c("Y1Q1", "Y1Q2") ~ "baseline",
+      time2 %in% c("Y1Q3", "Y1Q4", "Y2Q1", "Y2Q2") ~ "mid",
+      time2 %in% c("Y2Q3", "Y2Q4") ~ "final",
+      TRUE ~ NA_character_
+    ),
+    time_stage = factor(time_stage, levels = time_stage_levels)
+  )
+
+na_table <- x %>% 
+  summarise(across(everything(), ~ sum(is.na(.)))) %>% 
+  pivot_longer(everything(),
+               names_to = "variable",
+               values_to = "n_missing") %>%
+  arrange(desc(n_missing))
+
+print(na_table)
+```
+
+```{r fig-figure2, echo=FALSE}
+#| fig-cap: "Figure 2: Missingness by Time Stage"
+#| fig-pos: H
+
+x %>%
+  group_by(time_stage) %>%
+  summarise(across(everything(), ~ mean(is.na(.))), .groups = "drop") %>%
+  pivot_longer(
+    cols = -time_stage,
+    names_to = "variable",
+    values_to = "prop_missing"
+  ) %>%
+  ggplot(aes(x = variable, y = time_stage, fill = prop_missing)) +
+  geom_tile(color = "white") +
+  scale_fill_viridis_c(
+    name  = "Proportion\nMissing",
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    title = "Missingness by Time Stage (Baseline / Mid / Final)",
+    x = "Variable",
+    y = "Time Stage"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
 ```{r tbl-resid-summary, echo=FALSE}
 #| tbl-cap: "Summary of posterior residuals."
 #| tbl-pos: H
