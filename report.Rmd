@@ -398,6 +398,22 @@ x %>%
 
 ```
 
+```{r fig-figure 3, echo=FALSE}
+#| tbl-cap: "Figure 3: Missingness Aggregated by Site"
+#| tbl-pos: H
+
+x %>%
+  group_by(site_id) %>%
+  summarise(across(everything(), ~ mean(is.na(.)))) %>%
+  pivot_longer(-site_id, names_to = "variable", values_to = "prop_missing") %>%
+  ggplot(aes(x = variable, y = site_id, fill = prop_missing)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Missingness by Site")
+```
+
+
 ```{r tbl-resid-summary, echo=FALSE}
 #| tbl-cap: "Summary of posterior residuals."
 #| tbl-pos: H
