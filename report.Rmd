@@ -76,26 +76,35 @@ $$
 + \beta_{\text{time}}[t_i] + \beta_{\text{race}}[r_i] + u^{(out)}_{\text{site}[i]}.
 \end{aligned}
 $$
+This model estimates associations between demographic and pre-hospital factors and the probability of a good discharge outcome.
+Time-stage effects are coded relative to the baseline period (Y1Q1–Y1Q2), and Caucasian is used as the reference race category.  
+
 
 2. **Age $\mid$ transport, notify, site, time stage, gender**
 $$
 \text{Age}_i\sim\mathcal{N}\big(\alpha_0 + \alpha_{\text{time}}[t_i] + \alpha_{\text{gender}}\,\text{Gender}_i + \alpha_{\text{tr}}\,\text{Transport}_i + \alpha_{\text{not}}\,\text{Notify}_i + u^{(age)}_{\text{site}[i]},\,\sigma^2_{\text{age}}\big).
 $$
+This lets age vary by site, time, and pre-hospital factors, reflecting real-world care patterns.  
 
 3. **Notify $\mid$ transport, site, time stage, gender**
 $$
 \text{Notify}_i\sim\text{Bernoulli}(\pi^{(not)}_i),\quad \operatorname{logit}(\pi^{(not)}_i)=\delta_0 + \delta_{\text{tr}}\,\text{Transport}_i + \delta_{\text{time}}[t_i] + \delta_{\text{gender}}\,\text{Gender}_i + u^{(not)}_{\text{site}[i]}.
 $$
+A  close to 0 probability is assigned whenTransport[i]=0, representing that notification is effectively unavailable for car arrivals.  
 
 4. **Transport $\mid$ site, time stage, gender**
 $$
 \text{Transport}_i\sim\text{Bernoulli}(\pi^{(tr)}_i),\quad \operatorname{logit}(\pi^{(tr)}_i)=\gamma_0 + \gamma_{\text{time}}[t_i] + \gamma_{\text{gender}}\,\text{Gender}_i + u^{(tr)}_{\text{site}[i]}.
 $$
+Transport patterns may vary by site and program stage.  
+
 
 5. **Race $\mid$ site**
 $$
 \text{Race}_i\sim\text{Categorical}\big(\pi^{(race)}_{\text{site}[i],\cdot}\big),\quad \pi^{(race)}_{s,\cdot}\sim\text{Dirichlet}\big(\tfrac12,\tfrac12,\tfrac12\big).
 $$
+
+This allows each site to have its own racial distribution, with a weakly informative Jeffreys prior.  
 
 Time-stage effects are deviations from the baseline stage (fixed to zero); site random effects are mean-zero Normals with their own scale parameters. We run 3 chains with 2,000 burn-in iterations and 8,000 post–burn-in draws.
 
