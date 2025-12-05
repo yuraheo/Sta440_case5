@@ -1,5 +1,5 @@
 ---
-title: "STA 440 Case 4: Root Growth"
+title: "STA 440 Case 5: Stroke Outcomes"
 author: "Yura Heo, Anirudh Jain, Richard Jiang"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 format: 
